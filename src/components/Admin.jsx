@@ -1,0 +1,606 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+
+const FONT   = "'Share Tech Mono', monospace"
+const SANS   = "'Inter', sans-serif"
+const ACCENT = '#00ff41'
+
+const api = (url, opts = {}) =>
+  fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts }).then(r => r.json())
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
+}
+
+function fileToDataUrl(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader()
+    r.onload = e => res(e.target.result)
+    r.onerror = rej
+    r.readAsDataURL(file)
+  })
+}
+
+// ── Shared UI atoms ───────────────────────────────────────────────────────────
+
+function Btn({ children, onClick, danger, accent, disabled, style = {} }) {
+  const bg    = danger ? 'rgba(200,40,40,0.12)' : accent ? 'rgba(0,255,65,0.1)' : 'rgba(255,255,255,0.06)'
+  const color = danger ? '#ff6060' : accent ? ACCENT : 'rgba(255,255,255,0.7)'
+  const border = danger ? 'rgba(200,40,40,0.3)' : accent ? 'rgba(0,255,65,0.3)' : 'rgba(255,255,255,0.15)'
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: bg, color, border: `1px solid ${border}`,
+        padding: '5px 12px', fontSize: 11, fontFamily: FONT,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+        whiteSpace: 'nowrap',
+        ...style,
+      }}
+    >{children}</button>
+  )
+}
+
+function Field({ label, value, onChange, multiline, placeholder }) {
+  const style = {
+    width: '100%', background: 'rgba(0,0,0,0.4)',
+    border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)',
+    padding: '6px 10px', fontFamily: SANS, fontSize: 13,
+    resize: multiline ? 'vertical' : 'none', outline: 'none',
+  }
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 4 }}>
+        {label}
+      </div>
+      {multiline
+        ? <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={4} style={style} />
+        : <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={style} />
+      }
+    </div>
+  )
+}
+
+// ── Projects tab ─────────────────────────────────────────────────────────────
+
+function ProjectsTab({ projects, content, hasImages, onChange }) {
+  const [editing, setEditing] = useState(null) // project id
+  const [localProjects, setLocalProjects] = useState(projects)
+  const [localContent, setLocalContent]   = useState(content)
+  const [saving, setSaving]   = useState(false)
+  const [status, setStatus]   = useState('')
+  const fileRef = useRef(null)
+  const workFileRef = useRef(null)
+
+  useEffect(() => { setLocalProjects(projects) }, [projects])
+  useEffect(() => { setLocalContent(content) }, [content])
+
+  const save = async (newProjects, newContent) => {
+    setSaving(true)
+    try {
+      await api('/api/save-projects', { method: 'POST', body: JSON.stringify({ projects: newProjects }) })
+      if (newContent) {
+        for (const [id, c] of Object.entries(newContent)) {
+          await api('/api/save-content', { method: 'POST', body: JSON.stringify({ id, ...c }) })
+        }
+      }
+      onChange({ projects: newProjects, content: newContent || localContent })
+      setStatus('Saved')
+      setTimeout(() => setStatus(''), 2000)
+    } catch (e) {
+      setStatus('Error: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  const addProject = async () => {
+    const id = genId()
+    const p = { id, title: 'New Project', brief: '', tags: [], year: new Date().getFullYear().toString(), module: '', coverImage: null, order: localProjects.length }
+    const updated = [...localProjects, p]
+    setLocalProjects(updated)
+    setLocalContent(c => ({ ...c, [id]: { problem: '', insight: '', solution: '', workedWith: '', problemLabel: 'Problem', insightLabel: 'Insight', solutionLabel: 'Solution' } }))
+    setEditing(id)
+    await save(updated, null)
+  }
+
+  const deleteProject = async (id) => {
+    if (!window.confirm('Delete this project?')) return
+    const updated = localProjects.filter(p => p.id !== id)
+    setLocalProjects(updated)
+    if (editing === id) setEditing(null)
+    await save(updated, null)
+  }
+
+  const updateProject = (id, key, val) => {
+    setLocalProjects(ps => ps.map(p => p.id === id ? { ...p, [key]: val } : p))
+  }
+
+  const updateContent = (id, key, val) => {
+    setLocalContent(c => ({ ...c, [id]: { ...c[id], [key]: val } }))
+  }
+
+  const uploadCover = async (projectId, file) => {
+    const dataUrl = await fileToDataUrl(file)
+    await api('/api/upload-image', { method: 'POST', body: JSON.stringify({ projectId, imageType: 'cover', filename: 'cover.png', dataUrl }) })
+    setStatus('Cover uploaded — restart dev server to see it')
+    setTimeout(() => setStatus(''), 3000)
+  }
+
+  const uploadWork = async (projectId, file) => {
+    const dataUrl = await fileToDataUrl(file)
+    await api('/api/upload-image', { method: 'POST', body: JSON.stringify({ projectId, imageType: 'work', filename: file.name, dataUrl }) })
+    setStatus('Work image uploaded — restart dev server to see it')
+    setTimeout(() => setStatus(''), 3000)
+  }
+
+  const saveEditing = async () => {
+    await save(localProjects, localContent)
+  }
+
+  const editingProject = localProjects.find(p => p.id === editing)
+  const editingContent = editing ? (localContent[editing] || {}) : {}
+
+  return (
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Project list */}
+      <div style={{ width: 220, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.08)', overflowY: 'auto', padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>PROJECTS</span>
+          <Btn accent onClick={addProject}>+ Add</Btn>
+        </div>
+        {[...localProjects].sort((a,b) => (a.order??0)-(b.order??0)).map(p => (
+          <div
+            key={p.id}
+            onClick={() => setEditing(p.id)}
+            style={{
+              padding: '8px 10px', marginBottom: 4, cursor: 'pointer',
+              background: editing === p.id ? 'rgba(0,255,65,0.08)' : 'rgba(255,255,255,0.03)',
+              border: editing === p.id ? `1px solid rgba(0,255,65,0.2)` : '1px solid transparent',
+            }}
+          >
+            <div style={{ fontSize: 12, color: editing === p.id ? ACCENT : 'rgba(255,255,255,0.7)', fontFamily: SANS, fontWeight: 500, marginBottom: 2 }}>
+              {p.title || 'Untitled'}
+            </div>
+            <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.25)' }}>
+              {p.year}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Editor */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        {!editingProject ? (
+          <div style={{ color: 'rgba(255,255,255,0.2)', fontFamily: FONT, fontSize: 11, marginTop: 40, textAlign: 'center' }}>
+            Select a project to edit
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <span style={{ fontSize: 13, fontFamily: FONT, color: 'rgba(255,255,255,0.6)' }}>
+                Editing: <span style={{ color: '#fff' }}>{editingProject.title}</span>
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn danger onClick={() => deleteProject(editing)}>Delete</Btn>
+                <Btn accent onClick={saveEditing} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Btn>
+              </div>
+            </div>
+
+            {status && (
+              <div style={{ marginBottom: 16, fontSize: 11, fontFamily: FONT, color: ACCENT }}>{status}</div>
+            )}
+
+            <Field label="TITLE" value={editingProject.title} onChange={v => updateProject(editing, 'title', v)} />
+            <Field label="BRIEF" value={editingProject.brief} onChange={v => updateProject(editing, 'brief', v)} multiline placeholder="Short description shown on the card" />
+            <Field label="YEAR" value={editingProject.year} onChange={v => updateProject(editing, 'year', v)} />
+            <Field label="MODULE" value={editingProject.module || ''} onChange={v => updateProject(editing, 'module', v)} placeholder="e.g. AAD2006" />
+            <Field label="TAGS (comma separated)" value={(editingProject.tags || []).join(', ')} onChange={v => updateProject(editing, 'tags', v.split(',').map(t => t.trim()).filter(Boolean))} />
+            <Field label="ORDER (lower = first)" value={String(editingProject.order ?? 0)} onChange={v => updateProject(editing, 'order', parseInt(v) || 0)} />
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '20px 0' }} />
+
+            {/* Cover image upload */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 8 }}>COVER IMAGE</div>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={e => { if (e.target.files[0]) uploadCover(editing, e.target.files[0]); e.target.value = '' }} />
+              <Btn onClick={() => fileRef.current?.click()}>Upload Cover Image</Btn>
+            </div>
+
+            {/* Work images */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 8 }}>
+                WORK IMAGES {hasImages[editing] ? `(${hasImages[editing].length} uploaded)` : '(none)'}
+              </div>
+              {hasImages[editing]?.map(img => (
+                <div key={img} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.45)', flex: 1 }}>{img}</span>
+                  <Btn danger onClick={async () => {
+                    await api('/api/delete-work-image', { method: 'DELETE', body: JSON.stringify({ projectId: editing, filename: img }) })
+                    setStatus('Deleted — restart dev server to update')
+                  }}>Delete</Btn>
+                </div>
+              ))}
+              <input ref={workFileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={e => { if (e.target.files[0]) uploadWork(editing, e.target.files[0]); e.target.value = '' }} />
+              <Btn onClick={() => workFileRef.current?.click()}>Add Work Image</Btn>
+            </div>
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '20px 0' }} />
+
+            {/* Project text content */}
+            <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>TEXT CONTENT</div>
+            <Field label="PROBLEM LABEL" value={editingContent.problemLabel || 'Problem'} onChange={v => updateContent(editing, 'problemLabel', v)} />
+            <Field label="PROBLEM" value={editingContent.problem || ''} onChange={v => updateContent(editing, 'problem', v)} multiline />
+            <Field label="INSIGHT LABEL" value={editingContent.insightLabel || 'Insight'} onChange={v => updateContent(editing, 'insightLabel', v)} />
+            <Field label="INSIGHT" value={editingContent.insight || ''} onChange={v => updateContent(editing, 'insight', v)} multiline />
+            <Field label="SOLUTION LABEL" value={editingContent.solutionLabel || 'Solution'} onChange={v => updateContent(editing, 'solutionLabel', v)} />
+            <Field label="SOLUTION" value={editingContent.solution || ''} onChange={v => updateContent(editing, 'solution', v)} multiline />
+            <Field label="WORKED WITH" value={editingContent.workedWith || ''} onChange={v => updateContent(editing, 'workedWith', v)} />
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Settings tab ──────────────────────────────────────────────────────────────
+
+function SettingsTab({ settings, onChange }) {
+  const [local, setLocal] = useState(settings)
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+
+  useEffect(() => { setLocal(settings) }, [settings])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await api('/api/save-settings', { method: 'POST', body: JSON.stringify({ settings: local }) })
+      onChange({ settings: local })
+      setStatus('Saved')
+      setTimeout(() => setStatus(''), 2000)
+    } catch (e) {
+      setStatus('Error: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  const set = (path, val) => {
+    setLocal(s => {
+      const parts = path.split('.')
+      const next = JSON.parse(JSON.stringify(s))
+      let cur = next
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!cur[parts[i]]) cur[parts[i]] = {}
+        cur = cur[parts[i]]
+      }
+      cur[parts[parts.length - 1]] = val
+      return next
+    })
+  }
+
+  return (
+    <div style={{ padding: 20, maxWidth: 480 }}>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>SITE</div>
+        <Field label="SITE TITLE" value={local.siteTitle || ''} onChange={v => set('siteTitle', v)} />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>NOTIFICATIONS (ntfy.sh)</div>
+        <Field label="NTFY TOPIC" value={local.notifications?.ntfyTopic || ''} onChange={v => set('notifications.ntfyTopic', v)} placeholder="e.g. portfolio-joe-2026" />
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginTop: -8, marginBottom: 12 }}>
+          Only fires on the live site. Subscribe in the ntfy app using this topic name.
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>ANALYTICS</div>
+        <Field label="GOATCOUNTER SITE CODE" value={local.analytics?.goatcounterSiteCode || ''} onChange={v => set('analytics.goatcounterSiteCode', v)} placeholder="e.g. joecalvey" />
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginTop: -8 }}>
+          Free at goatcounter.com — your site code from the dashboard URL
+        </div>
+      </div>
+
+      {status && <div style={{ marginBottom: 12, fontSize: 11, fontFamily: FONT, color: ACCENT }}>{status}</div>}
+      <Btn accent onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Settings'}</Btn>
+    </div>
+  )
+}
+
+// ── Deploy tab ────────────────────────────────────────────────────────────────
+
+function DeployTab() {
+  const [gitInfo, setGitInfo]     = useState(null)
+  const [message, setMessage]     = useState('')
+  const [deploying, setDeploying] = useState(false)
+  const [log, setLog]             = useState('')
+
+  useEffect(() => {
+    api('/api/git-status').then(setGitInfo).catch(() => setGitInfo({ error: 'Not a git repo or git unavailable' }))
+  }, [])
+
+  const deploy = async () => {
+    if (deploying) return
+    setDeploying(true)
+    setLog('Running git add -A && git commit && git push…')
+    try {
+      const res = await api('/api/deploy', {
+        method: 'POST',
+        body: JSON.stringify({ message: message || undefined }),
+      })
+      if (res.ok) {
+        setLog(`✓ Deployed: "${res.message}"\n\nNetlify will rebuild in ~1 minute.`)
+        setMessage('')
+        const info = await api('/api/git-status')
+        setGitInfo(info)
+      } else {
+        setLog(`✗ Error: ${res.error}`)
+      }
+    } catch (e) {
+      setLog(`✗ ${e.message}`)
+    }
+    setDeploying(false)
+  }
+
+  return (
+    <div style={{ padding: 20, maxWidth: 480 }}>
+      <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 16 }}>DEPLOY TO NETLIFY</div>
+
+      {gitInfo && (
+        <div style={{
+          background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)',
+          padding: '12px 14px', marginBottom: 20, fontFamily: FONT, fontSize: 11,
+        }}>
+          {gitInfo.error ? (
+            <span style={{ color: '#ff6060' }}>{gitInfo.error}</span>
+          ) : (
+            <>
+              <div style={{ color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>Branch: <span style={{ color: '#fff' }}>{gitInfo.branch}</span></div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>Uncommitted changes: <span style={{ color: gitInfo.changes > 0 ? ACCENT : 'rgba(255,255,255,0.4)' }}>{gitInfo.changes}</span></div>
+              <div style={{ color: 'rgba(255,255,255,0.5)' }}>Last commit: <span style={{ color: '#fff' }}>{gitInfo.lastCommit}</span></div>
+            </>
+          )}
+        </div>
+      )}
+
+      <Field
+        label="COMMIT MESSAGE (optional)"
+        value={message}
+        onChange={setMessage}
+        placeholder={`update: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+      />
+
+      <Btn accent onClick={deploy} disabled={deploying} style={{ marginBottom: 16 }}>
+        {deploying ? 'Deploying…' : '🚀 Deploy'}
+      </Btn>
+
+      {log && (
+        <pre style={{
+          fontFamily: FONT, fontSize: 10,
+          color: log.startsWith('✓') ? ACCENT : log.startsWith('✗') ? '#ff6060' : 'rgba(255,255,255,0.5)',
+          background: 'rgba(0,0,0,0.3)', padding: 12, whiteSpace: 'pre-wrap', marginTop: 12,
+          border: '1px solid rgba(255,255,255,0.06)',
+        }}>{log}</pre>
+      )}
+    </div>
+  )
+}
+
+// ── Todo tab ──────────────────────────────────────────────────────────────────
+
+function TodoTab() {
+  const [todos, setTodos] = useState([])
+  const [input, setInput] = useState('')
+
+  useEffect(() => {
+    api('/api/todos').then(t => setTodos(Array.isArray(t) ? t : [])).catch(() => {})
+  }, [])
+
+  const persist = async (next) => {
+    setTodos(next)
+    await api('/api/todos', { method: 'POST', body: JSON.stringify({ todos: next }) }).catch(() => {})
+  }
+
+  const add = () => {
+    if (!input.trim()) return
+    persist([...todos, { id: genId(), text: input.trim(), done: false }])
+    setInput('')
+  }
+
+  const toggle = (id) => persist(todos.map(t => t.id === id ? { ...t, done: !t.done } : t))
+  const remove = (id) => persist(todos.filter(t => t.id !== id))
+
+  return (
+    <div style={{ padding: 20, maxWidth: 480 }}>
+      <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 16 }}>TO-DO</div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && add()}
+          placeholder="Add a task…"
+          style={{
+            flex: 1, background: 'rgba(0,0,0,0.4)',
+            border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)',
+            padding: '6px 10px', fontFamily: SANS, fontSize: 13, outline: 'none',
+          }}
+        />
+        <Btn accent onClick={add}>Add</Btn>
+      </div>
+
+      {todos.map(todo => (
+        <div key={todo.id} style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)',
+        }}>
+          <input
+            type="checkbox"
+            checked={todo.done}
+            onChange={() => toggle(todo.id)}
+            style={{ accentColor: ACCENT, width: 14, height: 14, flexShrink: 0 }}
+          />
+          <span style={{
+            flex: 1, fontSize: 13, fontFamily: SANS,
+            color: todo.done ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.75)',
+            textDecoration: todo.done ? 'line-through' : 'none',
+          }}>{todo.text}</span>
+          <button onClick={() => remove(todo.id)} style={{
+            background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)',
+            cursor: 'pointer', fontSize: 14, padding: '0 4px',
+          }}>✕</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Main Admin panel ──────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: 'projects', label: 'Projects' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'deploy',   label: 'Deploy' },
+  { id: 'todo',     label: 'To-do' },
+]
+
+export default function Admin({ projects, settings, content, onClose, onChange }) {
+  const [tab, setTab]             = useState('projects')
+  const [adminData, setAdminData] = useState({ projects, settings, content, hasImages: {} })
+
+  // Fresh load from disk on open
+  useEffect(() => {
+    api('/api/admin-data').then(d => {
+      setAdminData(prev => ({
+        projects:  d.projects  || projects,
+        settings:  d.settings  || settings,
+        content:   d.content   || content,
+        hasImages: d.hasImages || {},
+      }))
+    }).catch(() => {})
+  }, []) // eslint-disable-line
+
+  const handleChange = useCallback((updates) => {
+    setAdminData(prev => ({
+      ...prev,
+      ...(updates.projects ? { projects: updates.projects } : {}),
+      ...(updates.settings ? { settings: updates.settings } : {}),
+      ...(updates.content  ? { content:  updates.content  } : {}),
+    }))
+    onChange(updates)
+  }, [onChange])
+
+  // Drag to reposition panel
+  const panelRef  = useRef(null)
+  const dragRef   = useRef({ active: false, startX: 0, startY: 0, ox: 0, oy: 0 })
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+
+  const onDragStart = (e) => {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+    dragRef.current = { active: true, startX: e.clientX - pos.x, startY: e.clientY - pos.y, ox: pos.x, oy: pos.y }
+  }
+  const onDragMove = useCallback((e) => {
+    if (!dragRef.current.active) return
+    setPos({ x: e.clientX - dragRef.current.startX, y: e.clientY - dragRef.current.startY })
+  }, [])
+  const onDragEnd = useCallback(() => { dragRef.current.active = false }, [])
+
+  useEffect(() => {
+    window.addEventListener('mousemove', onDragMove)
+    window.addEventListener('mouseup', onDragEnd)
+    return () => { window.removeEventListener('mousemove', onDragMove); window.removeEventListener('mouseup', onDragEnd) }
+  }, [onDragMove, onDragEnd])
+
+  return createPortal(
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9990,
+      pointerEvents: 'none',
+    }}>
+      <div
+        ref={panelRef}
+        style={{
+          position: 'absolute',
+          top: `calc(50% + ${pos.y}px)`, left: `calc(50% + ${pos.x}px)`,
+          transform: 'translate(-50%, -50%)',
+          width: 780, height: 540,
+          background: '#0e0c09',
+          border: '1px solid rgba(0,255,65,0.25)',
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.8), 0 24px 64px rgba(0,0,0,0.9)',
+          display: 'flex', flexDirection: 'column',
+          pointerEvents: 'all',
+          fontFamily: FONT,
+        }}
+      >
+        {/* Title bar */}
+        <div
+          onMouseDown={onDragStart}
+          style={{
+            height: 36, background: '#0a0806',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex', alignItems: 'center',
+            padding: '0 12px',
+            cursor: 'grab', userSelect: 'none',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 10, color: 'rgba(0,255,65,0.7)', letterSpacing: 2 }}>
+            ADMIN — JOE CALVEY PORTFOLIO
+          </span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>Ctrl+Shift+A to close</span>
+            <button onClick={onClose} style={{
+              background: 'rgba(200,40,40,0.15)', border: '1px solid rgba(200,40,40,0.3)',
+              color: '#ff6060', width: 20, height: 20,
+              cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>✕</button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          flexShrink: 0,
+        }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: '8px 18px',
+              background: tab === t.id ? 'rgba(0,255,65,0.06)' : 'transparent',
+              border: 'none',
+              borderBottom: tab === t.id ? `2px solid ${ACCENT}` : '2px solid transparent',
+              color: tab === t.id ? ACCENT : 'rgba(255,255,255,0.4)',
+              fontFamily: FONT, fontSize: 10, letterSpacing: 1,
+              cursor: 'pointer',
+            }}>{t.label}</button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {tab === 'projects' && (
+            <ProjectsTab
+              projects={adminData.projects}
+              content={adminData.content}
+              hasImages={adminData.hasImages}
+              onChange={handleChange}
+            />
+          )}
+          {tab === 'settings' && (
+            <SettingsTab
+              settings={adminData.settings}
+              onChange={handleChange}
+            />
+          )}
+          {tab === 'deploy'   && <DeployTab />}
+          {tab === 'todo'     && <TodoTab />}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}

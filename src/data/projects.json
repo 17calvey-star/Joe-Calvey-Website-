@@ -1,0 +1,12 @@
+[
+  {
+    "id": "example-project",
+    "title": "Example Project",
+    "brief": "A short description of what this project is about.",
+    "tags": ["advertising", "digital"],
+    "year": "2024",
+    "module": "",
+    "coverImage": null,
+    "order": 0
+  }
+]
