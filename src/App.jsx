@@ -33,8 +33,9 @@ export default function App() {
       .catch(() => setProjects(projectsData))
   }, [])
 
-  // Ctrl+Shift+A → toggle admin panel
+  // Ctrl+Shift+A → toggle admin panel (dev only — no-op on live site)
   useEffect(() => {
+    if (!import.meta.env.DEV) return
     const onKey = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'A') {
         setAdminOpen(o => !o)
@@ -190,8 +191,8 @@ export default function App() {
         onComplete={handleTransitionComplete}
       />
 
-      {/* Admin panel — Ctrl+Shift+A, dev only */}
-      {adminOpen && (
+      {/* Admin panel — Ctrl+Shift+A, dev only. Never rendered in production. */}
+      {import.meta.env.DEV && adminOpen && (
         <Admin
           projects={projects}
           settings={settings}
