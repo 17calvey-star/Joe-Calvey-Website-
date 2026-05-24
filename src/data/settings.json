@@ -7,6 +7,9 @@
   "notifications": {
     "ntfyTopic": "joe-calvey-website-2006"
   },
+  "deploy": {
+    "netlifyHookUrl": ""
+  },
   "decorations": {
     "airVent":  { "show": true,  "x": 0, "y": 0 },
     "luckSign": { "show": true,  "x": 0, "y": 0 },

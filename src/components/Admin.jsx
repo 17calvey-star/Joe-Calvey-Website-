@@ -428,6 +428,22 @@ function SettingsTab({ settings, onChange }) {
       </div>
 
       <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>DEPLOY</div>
+        <Field
+          label="NETLIFY DEPLOY HOOK URL"
+          value={local.deploy?.netlifyHookUrl || ''}
+          onChange={v => set('deploy.netlifyHookUrl', v)}
+          placeholder="https://api.netlify.com/build_hooks/..."
+        />
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginTop: -8, marginBottom: 4 }}>
+          Paste your hook URL here, then turn off auto-publishing on Netlify.
+        </div>
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.15)', marginBottom: 12 }}>
+          Netlify → Site config → Build &amp; deploy → Deploy hooks → Add hook
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>NOTIFICATIONS (ntfy.sh)</div>
         <Field label="NTFY TOPIC" value={local.notifications?.ntfyTopic || ''} onChange={v => set('notifications.ntfyTopic', v)} placeholder="e.g. portfolio-joe-2026" />
         <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginTop: -8, marginBottom: 12 }}>
@@ -471,7 +487,10 @@ function DeployTab() {
         body: JSON.stringify({ message: message || undefined }),
       })
       if (res.ok) {
-        setLog(`✓ Deployed: "${res.message}"\n\nNetlify will rebuild in ~1 minute.`)
+        const hookLine = res.hookTriggered
+          ? '\n🔔 Netlify deploy hook triggered — rebuilding now.'
+          : '\n(No deploy hook set — make sure auto-publishing is on, or add a hook in Settings.)'
+        setLog(`✓ Pushed: "${res.message}"${hookLine}`)
         setMessage('')
         const info = await api('/api/git-status')
         setGitInfo(info)

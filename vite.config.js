@@ -189,7 +189,26 @@ function adminApiPlugin() {
             }
 
             execSync('git push', { encoding: 'utf-8', env: sshEnv })
-            return jsonRes(res, { ok: true, message: staged ? msg : '(nothing to commit — pushed existing commits)' })
+
+            // If a Netlify deploy hook is configured, trigger it now
+            // (use this when auto-publishing is disabled on Netlify)
+            let hookTriggered = false
+            try {
+              const settingsRaw = fs.readFileSync('./src/data/settings.json', 'utf-8')
+              const settings = JSON.parse(settingsRaw)
+              const hookUrl = settings?.deploy?.netlifyHookUrl?.trim()
+              if (hookUrl) {
+                // Node's built-in fetch (v18+)
+                await fetch(hookUrl, { method: 'POST' })
+                hookTriggered = true
+              }
+            } catch (_) { /* hook call is best-effort */ }
+
+            return jsonRes(res, {
+              ok: true,
+              message: staged ? msg : '(nothing to commit — pushed existing commits)',
+              hookTriggered,
+            })
           } catch (e) { return jsonRes(res, { error: e.message }, 500) }
         }
 
