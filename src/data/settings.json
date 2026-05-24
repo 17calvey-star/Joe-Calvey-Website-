@@ -1,9 +1,16 @@
 {
   "siteTitle": "Joe Calvey",
+  "osTitle": "CALVEY OS  v1.0",
   "analytics": {
     "goatcounterSiteCode": ""
   },
   "notifications": {
     "ntfyTopic": "joe-calvey-website-2006"
+  },
+  "decorations": {
+    "airVent":  { "show": true,  "x": 0, "y": 0 },
+    "luckSign": { "show": true,  "x": 0, "y": 0 },
+    "deskMug":  { "show": true,  "x": 0, "y": 0 },
+    "deskBook": { "show": true,  "x": 0, "y": 0 }
   }
 }

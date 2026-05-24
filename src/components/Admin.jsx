@@ -63,6 +63,65 @@ function Field({ label, value, onChange, multiline, placeholder }) {
   )
 }
 
+function Toggle({ label, checked, onChange, hint }) {
+  return (
+    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div
+        onClick={() => onChange(!checked)}
+        style={{
+          width: 34, height: 18, borderRadius: 9,
+          background: checked ? 'rgba(0,255,65,0.25)' : 'rgba(255,255,255,0.06)',
+          border: `1px solid ${checked ? 'rgba(0,255,65,0.4)' : 'rgba(255,255,255,0.12)'}`,
+          position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s',
+        }}
+      >
+        <div style={{
+          position: 'absolute', top: 2, left: checked ? 16 : 2,
+          width: 12, height: 12, borderRadius: '50%',
+          background: checked ? ACCENT : 'rgba(255,255,255,0.3)',
+          transition: 'all 0.15s',
+        }} />
+      </div>
+      <div>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1 }}>{label}</div>
+        {hint && <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.18)', marginTop: 2 }}>{hint}</div>}
+      </div>
+    </div>
+  )
+}
+
+function ColourField({ label, value, onChange }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <input
+          type="color"
+          value={value || '#4a9eff'}
+          onChange={e => onChange(e.target.value)}
+          style={{ width: 36, height: 28, border: '1px solid rgba(255,255,255,0.15)', background: 'none', cursor: 'pointer', padding: 2 }}
+        />
+        <input
+          value={value || '#4a9eff'}
+          onChange={e => onChange(e.target.value)}
+          placeholder="#4a9eff"
+          style={{
+            width: 100, background: 'rgba(0,0,0,0.4)',
+            border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)',
+            padding: '6px 10px', fontFamily: SANS, fontSize: 13, outline: 'none',
+          }}
+        />
+        <div style={{
+          width: 28, height: 28,
+          background: value || '#4a9eff',
+          border: '1px solid rgba(255,255,255,0.15)',
+          flexShrink: 0,
+        }} />
+      </div>
+    </div>
+  )
+}
+
 // ── Projects tab ─────────────────────────────────────────────────────────────
 
 function ProjectsTab({ projects, content, hasImages, onChange }) {
@@ -73,6 +132,7 @@ function ProjectsTab({ projects, content, hasImages, onChange }) {
   const [status, setStatus]   = useState('')
   const fileRef = useRef(null)
   const workFileRef = useRef(null)
+  const pdfFileRef = useRef(null)
 
   useEffect(() => { setLocalProjects(projects) }, [projects])
   useEffect(() => { setLocalContent(content) }, [content])
@@ -97,7 +157,12 @@ function ProjectsTab({ projects, content, hasImages, onChange }) {
 
   const addProject = async () => {
     const id = genId()
-    const p = { id, title: 'New Project', brief: '', tags: [], year: new Date().getFullYear().toString(), module: '', coverImage: null, order: localProjects.length }
+    const p = {
+      id, title: 'New Project', brief: '', icon: 'folder', colour: '#4a9eff',
+      tags: [], year: new Date().getFullYear().toString(), module: '',
+      hidden: false, videoUrl: '', pdfUrl: '', externalLink: '',
+      desktopPos: { x: 0, y: 0 }, order: localProjects.length,
+    }
     const updated = [...localProjects, p]
     setLocalProjects(updated)
     setLocalContent(c => ({ ...c, [id]: { problem: '', insight: '', solution: '', workedWith: '', problemLabel: 'Problem', insightLabel: 'Insight', solutionLabel: 'Solution' } }))
@@ -135,6 +200,19 @@ function ProjectsTab({ projects, content, hasImages, onChange }) {
     setTimeout(() => setStatus(''), 3000)
   }
 
+  const uploadPdf = async (projectId, file) => {
+    const dataUrl = await fileToDataUrl(file)
+    const res = await api('/api/upload-pdf', { method: 'POST', body: JSON.stringify({ projectId, filename: file.name, dataUrl }) })
+    if (res.ok) {
+      // Set the pdfUrl on the project
+      setLocalProjects(ps => ps.map(p => p.id === projectId ? { ...p, pdfUrl: res.url } : p))
+      setStatus('PDF uploaded ✓')
+      setTimeout(() => setStatus(''), 3000)
+    } else {
+      setStatus('PDF upload failed: ' + (res.error || 'unknown'))
+    }
+  }
+
   const saveEditing = async () => {
     await save(localProjects, localContent)
   }
@@ -158,13 +236,17 @@ function ProjectsTab({ projects, content, hasImages, onChange }) {
               padding: '8px 10px', marginBottom: 4, cursor: 'pointer',
               background: editing === p.id ? 'rgba(0,255,65,0.08)' : 'rgba(255,255,255,0.03)',
               border: editing === p.id ? `1px solid rgba(0,255,65,0.2)` : '1px solid transparent',
+              opacity: p.hidden ? 0.45 : 1,
             }}
           >
-            <div style={{ fontSize: 12, color: editing === p.id ? ACCENT : 'rgba(255,255,255,0.7)', fontFamily: SANS, fontWeight: 500, marginBottom: 2 }}>
-              {p.title || 'Untitled'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <div style={{ width: 8, height: 8, background: p.colour || '#4a9eff', flexShrink: 0 }} />
+              <div style={{ fontSize: 12, color: editing === p.id ? ACCENT : 'rgba(255,255,255,0.7)', fontFamily: SANS, fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {p.title || 'Untitled'}
+              </div>
             </div>
-            <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.25)' }}>
-              {p.year}
+            <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.25)', paddingLeft: 14 }}>
+              {p.year}{p.hidden ? '  [hidden]' : ''}
             </div>
           </div>
         ))}
@@ -193,11 +275,31 @@ function ProjectsTab({ projects, content, hasImages, onChange }) {
             )}
 
             <Field label="TITLE" value={editingProject.title} onChange={v => updateProject(editing, 'title', v)} />
-            <Field label="BRIEF" value={editingProject.brief} onChange={v => updateProject(editing, 'brief', v)} multiline placeholder="Short description shown on the card" />
+            <Field label="BRIEF" value={editingProject.brief} onChange={v => updateProject(editing, 'brief', v)} multiline placeholder="Short description shown below icon" />
             <Field label="YEAR" value={editingProject.year} onChange={v => updateProject(editing, 'year', v)} />
             <Field label="MODULE" value={editingProject.module || ''} onChange={v => updateProject(editing, 'module', v)} placeholder="e.g. AAD2006" />
             <Field label="TAGS (comma separated)" value={(editingProject.tags || []).join(', ')} onChange={v => updateProject(editing, 'tags', v.split(',').map(t => t.trim()).filter(Boolean))} />
-            <Field label="ORDER (lower = first)" value={String(editingProject.order ?? 0)} onChange={v => updateProject(editing, 'order', parseInt(v) || 0)} />
+
+            <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ flex: 1 }}>
+                <Field label="ORDER (lower = first)" value={String(editingProject.order ?? 0)} onChange={v => updateProject(editing, 'order', parseInt(v) || 0)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <ColourField label="ICON COLOUR" value={editingProject.colour || '#4a9eff'} onChange={v => updateProject(editing, 'colour', v)} />
+              </div>
+            </div>
+
+            <Toggle
+              label="HIDDEN"
+              checked={!!editingProject.hidden}
+              onChange={v => updateProject(editing, 'hidden', v)}
+              hint="Hides this project from the desktop"
+            />
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 0 16px' }} />
+
+            <Field label="VIDEO URL" value={editingProject.videoUrl || ''} onChange={v => updateProject(editing, 'videoUrl', v)} placeholder="YouTube or Vimeo URL" />
+            <Field label="EXTERNAL LINK" value={editingProject.externalLink || ''} onChange={v => updateProject(editing, 'externalLink', v)} placeholder="https://..." />
 
             <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '20px 0' }} />
 
@@ -223,9 +325,44 @@ function ProjectsTab({ projects, content, hasImages, onChange }) {
                   }}>Delete</Btn>
                 </div>
               ))}
-              <input ref={workFileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                onChange={e => { if (e.target.files[0]) uploadWork(editing, e.target.files[0]); e.target.value = '' }} />
-              <Btn onClick={() => workFileRef.current?.click()}>Add Work Image</Btn>
+              <input ref={workFileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+                onChange={e => {
+                  const files = Array.from(e.target.files || [])
+                  files.forEach(f => uploadWork(editing, f))
+                  e.target.value = ''
+                }} />
+              <Btn onClick={() => workFileRef.current?.click()}>Add Work Image(s)</Btn>
+            </div>
+
+            {/* PDF process book */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 8 }}>PDF PROCESS BOOK</div>
+              {editingProject.pdfUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, fontFamily: FONT, color: ACCENT, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {editingProject.pdfUrl}
+                  </span>
+                  <Btn danger onClick={() => updateProject(editing, 'pdfUrl', '')}>Remove</Btn>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginBottom: 8 }}>No PDF uploaded</div>
+              )}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input ref={pdfFileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files[0]) uploadPdf(editing, e.target.files[0]); e.target.value = '' }} />
+                <Btn onClick={() => pdfFileRef.current?.click()}>Upload PDF</Btn>
+                <span style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.2)' }}>or</span>
+                <input
+                  value={editingProject.pdfUrl || ''}
+                  onChange={e => updateProject(editing, 'pdfUrl', e.target.value)}
+                  placeholder="Paste external PDF URL"
+                  style={{
+                    flex: 1, background: 'rgba(0,0,0,0.4)',
+                    border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)',
+                    padding: '5px 8px', fontFamily: SANS, fontSize: 12, outline: 'none',
+                  }}
+                />
+              </div>
             </div>
 
             <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '20px 0' }} />
@@ -286,7 +423,8 @@ function SettingsTab({ settings, onChange }) {
     <div style={{ padding: 20, maxWidth: 480 }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>SITE</div>
-        <Field label="SITE TITLE" value={local.siteTitle || ''} onChange={v => set('siteTitle', v)} />
+        <Field label="SITE TITLE" value={local.siteTitle || ''} onChange={v => set('siteTitle', v)} placeholder="Joe Calvey" />
+        <Field label="OS TITLE (shown in title bar)" value={local.osTitle || ''} onChange={v => set('osTitle', v)} placeholder="CALVEY OS  v1.0" />
       </div>
 
       <div style={{ marginBottom: 24 }}>

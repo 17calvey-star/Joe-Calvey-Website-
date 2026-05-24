@@ -2,25 +2,47 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import projectsData from './data/projects.json'
 import settingsData from './data/settings.json'
 import contentData from './content.json'
-import Room from './components/Room'
-import Portfolio from './components/Portfolio'
+import Room      from './components/Room'
+import Desktop   from './components/Desktop'
 import StaticTransition from './components/StaticTransition'
-import Admin from './components/Admin'
+import Admin     from './components/Admin'
+
+// ── Scale system ──────────────────────────────────────────────────────────────
+// All components receive a `scale` prop derived from container width vs design
+// width. Never hardcode pixel values in components — always multiply by scale.
+export const DESIGN_WIDTH = 1280
 
 export default function App() {
-  const [view, setView]             = useState('room')   // 'room' | 'portfolio'
-  const [transitioning, setTransitioning] = useState(false)
-  const [transitionDir, setTransitionDir] = useState('in') // 'in' = room→portfolio, 'out' = portfolio→room
-  const [activeProject, setActiveProject] = useState(null)
-  const [adminOpen, setAdminOpen]   = useState(false)
+  const containerRef  = useRef(null)
+  const [scale, setScale]           = useState(1)
+  const [isTouchDevice, setTouch]   = useState(false)
 
-  const [projects, setProjects]     = useState(() =>
-    import.meta.env.DEV ? [] : projectsData
-  )
-  const [settings, setSettings]     = useState(settingsData)
-  const [content, setContent]       = useState(contentData)
+  useEffect(() => {
+    setTouch(window.matchMedia('(pointer: coarse)').matches)
+  }, [])
 
-  // In dev: hydrate from disk via API to avoid Vite module cache staleness
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(([entry]) => {
+      setScale(entry.contentRect.width / DESIGN_WIDTH)
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  // ── View state ───────────────────────────────────────────────────────────────
+  const [view, setView]           = useState('room')   // 'room' | 'desktop'
+  const [transitioning, setTrans] = useState(false)
+  const [transDir, setTransDir]   = useState('in')     // 'in' = room→desktop
+  const [adminOpen, setAdminOpen] = useState(false)
+
+  // ── Content state ────────────────────────────────────────────────────────────
+  const [projects,  setProjects]  = useState(() => import.meta.env.DEV ? [] : projectsData)
+  const [settings,  setSettings]  = useState(settingsData)
+  const [content,   setContent]   = useState(contentData)
+
+  // In dev: hydrate from disk via API to bypass Vite module-cache staleness
   useEffect(() => {
     if (!import.meta.env.DEV) return
     fetch('/api/admin-data')
@@ -33,39 +55,36 @@ export default function App() {
       .catch(() => setProjects(projectsData))
   }, [])
 
-  // Ctrl+Shift+A → toggle admin panel (dev only — no-op on live site)
+  // ── Admin keyboard shortcut (dev only) ───────────────────────────────────────
   useEffect(() => {
     if (!import.meta.env.DEV) return
     const onKey = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-        setAdminOpen(o => !o)
-      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'A') setAdminOpen(o => !o)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // GoatCounter injection
+  // ── GoatCounter ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const code = settings?.analytics?.goatcounterSiteCode?.trim()
     if (!code || document.getElementById('goatcounter-script')) return
     const s = document.createElement('script')
-    s.id = 'goatcounter-script'
-    s.async = true
+    s.id = 'goatcounter-script'; s.async = true
     s.setAttribute('data-goatcounter', `https://${code}.goatcounter.com/count`)
     s.src = '//gc.zgo.at/count.js'
     document.head.appendChild(s)
   }, [settings?.analytics?.goatcounterSiteCode]) // eslint-disable-line
 
-  // ntfy visitor notification — fires once on load, only on the live site
+  // ── ntfy visitor notification (live site only) ───────────────────────────────
   const _notifiedRef = useRef(false)
   useEffect(() => {
-    if (_notifiedRef.current) return
+    if (_notifiedRef.current || import.meta.env.DEV) return
     const topic = (settingsData?.notifications?.ntfyTopic || '').trim()
     if (!topic) return
-    // Only fire on the deployed site, not locally
-    if (import.meta.env.DEV) return
     _notifiedRef.current = true
+
+    const sessionTag = Math.random().toString(36).slice(2, 6).toUpperCase()
 
     const send = (loc) => {
       const city    = loc?.city         || ''
@@ -74,78 +93,69 @@ export default function App() {
       const flag    = loc?.country_code
         ? String.fromCodePoint(...[...loc.country_code].map(c => 0x1F1E6 + c.charCodeAt(0) - 65))
         : '🌍'
-      const where = [city, region, country].filter(Boolean).join(', ') || 'Unknown location'
-
-      const org     = loc?.org          || ''
+      const where   = [city, region, country].filter(Boolean).join(', ') || 'Unknown'
+      const org     = loc?.org || ''
       const isUni   = /jisc|janet|university|college|ac\.uk/i.test(org)
       const isMob   = /mobile|cellular|t-mobile|o2|vodafone|three\b|ee\b/i.test(org)
       const isWork  = !isUni && !isMob && org && !/residential|broadband|bt |sky |virgin/i.test(org)
-      const netType = isUni ? '🎓 University' : isMob ? '📱 Mobile' : isWork ? '🏢 Work/Office' : '🏠 Home'
-
-      const ref = document.referrer
+      const netType = isUni ? '🎓 University' : isMob ? '📱 Mobile' : isWork ? '🏢 Work' : '🏠 Home'
+      const ref     = document.referrer
       const refLabel = !ref ? 'Direct' :
-        /linkedin/i.test(ref) ? 'LinkedIn' :
-        /google/i.test(ref)   ? 'Google'   :
-        /instagram/i.test(ref)? 'Instagram':
-        new URL(ref).hostname
-
+        /linkedin/i.test(ref) ? 'LinkedIn' : /google/i.test(ref) ? 'Google' :
+        /instagram/i.test(ref) ? 'Instagram' : new URL(ref).hostname
+      const device = /iphone|ipad/i.test(navigator.userAgent) ? 'iPhone/iPad' :
+        /android/i.test(navigator.userAgent) ? 'Android' :
+        /mac/i.test(navigator.userAgent) ? 'Mac' :
+        /win/i.test(navigator.userAgent) ? 'Windows' : 'Other'
       const postcode = loc?.postal || ''
-      const mapsUrl  = postcode
-        ? `https://www.google.com/maps/search/${encodeURIComponent(postcode)}`
-        : `https://www.google.com/maps/search/${encodeURIComponent(where)}`
+      const mapsUrl     = `https://www.google.com/maps/search/${encodeURIComponent(postcode || where)}`
       const agenciesUrl = `https://www.google.com/search?q=advertising+agencies+${encodeURIComponent(postcode || city)}`
-
       const body = [
-        `Someone is viewing your portfolio`,
+        `Someone is viewing your portfolio  [${sessionTag}]`,
         `${flag} ${where}`,
         `${netType}${org ? ` — ${org}` : ''}`,
-        `🔗 From: ${refLabel}`,
-        `💻 ${navigator.userAgent.includes('Mac') ? 'Mac' : navigator.userAgent.includes('Win') ? 'Windows' : 'Other'}`,
+        `🔗 ${refLabel}  |  💻 ${device}`,
       ].join('\n')
-
-      const qs = new URLSearchParams({
-        title: '👁 Joe Calvey Portfolio',
-        priority: 'default',
-        tags: 'eyes',
+      fetch(`https://ntfy.sh/${topic}?${new URLSearchParams({
+        title: '👁 Joe Calvey Portfolio', priority: 'default', tags: 'eyes',
         actions: `view, 📍 Map, ${mapsUrl}; view, 🏢 Agencies, ${agenciesUrl}`,
-      })
-
-      fetch(`https://ntfy.sh/${topic}?${qs}`, {
-        method: 'POST',
-        body,
-      }).catch(() => {})
+      })}`, { method: 'POST', body }).catch(() => {})
     }
 
     try {
       fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000) })
         .then(r => r.ok ? r.json() : Promise.reject())
-        .then(loc => send(loc))
-        .catch(() => send(null))
-    } catch (_) {
-      send(null)
+        .then(loc => send(loc)).catch(() => send(null))
+    } catch (_) { send(null) }
+
+    // sendBeacon on leave with time-on-site
+    const startTime = Date.now()
+    const onLeave = () => {
+      const secs = Math.round((Date.now() - startTime) / 1000)
+      const mins = Math.floor(secs / 60), s = secs % 60
+      const dur  = mins > 0 ? `${mins}m ${s}s` : `${s}s`
+      navigator.sendBeacon?.(`https://ntfy.sh/${topic}`,
+        JSON.stringify({ topic, title: `⏱ Left after ${dur}  [${sessionTag}]`, message: 'Session ended', priority: 'min' })
+      )
     }
+    window.addEventListener('pagehide', onLeave)
+    return () => window.removeEventListener('pagehide', onLeave)
   }, []) // eslint-disable-line
 
+  // ── Transition handlers ───────────────────────────────────────────────────────
   const handleComputerClick = useCallback(() => {
     if (transitioning) return
-    setTransitionDir('in')
-    setTransitioning(true)
+    setTransDir('in'); setTrans(true)
   }, [transitioning])
 
   const handleTransitionComplete = useCallback(() => {
-    if (transitionDir === 'in') {
-      setView('portfolio')
-    } else {
-      setView('room')
-    }
-    setTransitioning(false)
-  }, [transitionDir])
+    setView(transDir === 'in' ? 'desktop' : 'room')
+    setTrans(false)
+  }, [transDir])
 
-  const handleBackToRoom = useCallback(() => {
+  const handleExitDesktop = useCallback(() => {
     if (transitioning) return
-    setActiveProject(null)
-    setTransitionDir('out')
-    setTransitioning(true)
+    setTransDir('out'); setTrans(true)
   }, [transitioning])
 
   const handleAdminChange = useCallback(({ projects: p, settings: s, content: c }) => {
@@ -155,43 +165,38 @@ export default function App() {
   }, [])
 
   return (
-    <>
-      {/* Room is always mounted; hidden behind portfolio when in portfolio view */}
+    <div ref={containerRef} style={{ position: 'fixed', inset: 0 }}>
+      {/* Room */}
       <div style={{
-        position: 'fixed', inset: 0,
-        opacity: view === 'room' && !transitioning ? 1 : view === 'room' ? 1 : 0,
+        position: 'absolute', inset: 0, zIndex: 1,
+        opacity: view === 'room' ? 1 : 0,
         pointerEvents: view === 'room' && !transitioning ? 'auto' : 'none',
         transition: 'opacity 0.3s ease',
-        zIndex: 1,
       }}>
-        <Room onComputerClick={handleComputerClick} />
+        <Room onComputerClick={handleComputerClick} scale={scale} settings={settings} />
       </div>
 
-      {/* Portfolio view */}
+      {/* OS Desktop */}
       <div style={{
-        position: 'fixed', inset: 0,
-        opacity: view === 'portfolio' && !transitioning ? 1 : 0,
-        pointerEvents: view === 'portfolio' && !transitioning ? 'auto' : 'none',
+        position: 'absolute', inset: 0, zIndex: 2,
+        opacity: view === 'desktop' && !transitioning ? 1 : 0,
+        pointerEvents: view === 'desktop' && !transitioning ? 'auto' : 'none',
         transition: 'opacity 0.3s ease',
-        zIndex: 2,
       }}>
-        <Portfolio
+        <Desktop
           projects={projects}
           content={content}
-          activeProject={activeProject}
-          onProjectClick={setActiveProject}
-          onCloseProject={() => setActiveProject(null)}
-          onBack={handleBackToRoom}
+          settings={settings}
+          scale={scale}
+          isTouchDevice={isTouchDevice}
+          onExit={handleExitDesktop}
         />
       </div>
 
-      {/* TV static transition overlay */}
-      <StaticTransition
-        active={transitioning}
-        onComplete={handleTransitionComplete}
-      />
+      {/* TV static transition */}
+      <StaticTransition active={transitioning} onComplete={handleTransitionComplete} />
 
-      {/* Admin panel — Ctrl+Shift+A, dev only. Never rendered in production. */}
+      {/* Admin panel — dev only */}
       {import.meta.env.DEV && adminOpen && (
         <Admin
           projects={projects}
@@ -201,6 +206,6 @@ export default function App() {
           onChange={handleAdminChange}
         />
       )}
-    </>
+    </div>
   )
 }

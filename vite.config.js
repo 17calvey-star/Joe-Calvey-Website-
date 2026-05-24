@@ -127,6 +127,23 @@ function adminApiPlugin() {
           } catch (e) { return jsonRes(res, { error: e.message }, 500) }
         }
 
+        // POST /api/upload-pdf — saves to public/pdfs/{projectId}.pdf
+        if (url === '/api/upload-pdf' && req.method === 'POST') {
+          try {
+            const { projectId, filename, dataUrl } = await readBody(req)
+            const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '')
+            const buf = Buffer.from(base64, 'base64')
+            const pdfDir = path.resolve('./public/pdfs')
+            fs.mkdirSync(pdfDir, { recursive: true })
+            // Use projectId as filename so there's always one PDF per project
+            const ext = filename?.endsWith('.pdf') ? '.pdf' : '.pdf'
+            const destPath = path.join(pdfDir, `${projectId}${ext}`)
+            fs.writeFileSync(destPath, buf)
+            const publicUrl = `/pdfs/${projectId}.pdf`
+            return jsonRes(res, { ok: true, url: publicUrl })
+          } catch (e) { return jsonRes(res, { error: e.message }, 500) }
+        }
+
         // GET /api/todos
         if (url === '/api/todos' && req.method === 'GET') {
           try {
@@ -190,6 +207,7 @@ export default defineConfig({
         path.resolve('./src/data/settings.json'),
         path.resolve('./src/data/todos.json'),
         path.resolve('./src/content.json'),
+        path.resolve('./public/pdfs'),
       ],
     },
   },
