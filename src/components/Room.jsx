@@ -1,205 +1,137 @@
 import Computer from './Computer'
 
-// Pixel art color palette — dark, dingy, prison/dungeon
-const C = {
-  ceiling:     '#0b0907',
-  ceilingJoin: '#201a10',
-  floor:       '#0c0a06',
-  floorJoin:   '#1c1610',
-  sideWall:    '#0e0c08',
-  backWall:    '#1c1812',
-  brick:       'rgba(0,0,0,0.20)',
-  brickLight:  'rgba(255,240,180,0.015)',
-  desk:        '#2a1e0e',
-  deskShade:   '#1a1208',
-  deskHighlight:'#3a2a14',
-  deskLeg:     '#1e1508',
-  mug:         '#2e2e2e',
-  mugRim:      '#3a3a3a',
-  book:        '#1a3a1a',
-  bookPage:    '#c8b878',
-  luckSign:    '#d0d0b0',
-  ventGrate:   '#1a1a1a',
-}
-
-// Offset brick pattern using CSS gradients
-const BRICK_BG = `
-  repeating-linear-gradient(90deg,
-    transparent 0px, transparent 47px,
-    ${C.brick} 47px, ${C.brick} 49px),
-  repeating-linear-gradient(0deg,
-    transparent 0px, transparent 23px,
-    ${C.brick} 23px, ${C.brick} 25px),
-  linear-gradient(180deg, ${C.backWall} 0%, #181410 100%)
-`.trim()
-
-// ── Decorative elements ───────────────────────────────────────────────────────
-
-function LuckSign({ scale, offset = { x: 0, y: 0 } }) {
-  const s = scale
+// ── SVG filter / gradient defs ─────────────────────────────────────────────────
+function Defs() {
   return (
-    <div style={{
-      position: 'absolute',
-      left: `calc(8% + ${offset.x * s}px)`,
-      top: `calc(22% + ${offset.y * s}px)`,
-      width: 52 * s, height: 60 * s,
-      background: C.luckSign,
-      border: `${2 * s}px solid #a0a080`,
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      gap: 4 * s,
-      boxShadow: `${2 * s}px ${3 * s}px ${8 * s}px rgba(0,0,0,0.6)`,
-      imageRendering: 'pixelated',
-    }}>
-      {/* Shamrock */}
-      <div style={{
-        fontSize: 18 * s, lineHeight: 1,
-        filter: 'saturate(0.6) brightness(0.7)',
-      }}>🍀</div>
-      <div style={{
-        fontFamily: "'Press Start 2P', monospace",
-        fontSize: 5 * s, color: '#404030',
-        letterSpacing: 0,
-      }}>LUCK</div>
-    </div>
+    <defs>
+      {/* ── Cracked plaster — back wall ─────────────────────────────────────── */}
+      <filter id="plaster-back" x="-2%" y="-2%" width="104%" height="104%"
+        colorInterpolationFilters="sRGB">
+        {/* Coarse surface mottling */}
+        <feTurbulence type="fractalNoise" baseFrequency="0.048 0.038"
+          numOctaves="6" seed="4" result="base" />
+        {/* Quantise into pixel-art steps (5 tones) */}
+        <feComponentTransfer in="base" result="stepped">
+          <feFuncR type="discrete" tableValues="0.03 0.065 0.10 0.14 0.09" />
+          <feFuncG type="discrete" tableValues="0.027 0.058 0.09 0.125 0.08" />
+          <feFuncB type="discrete" tableValues="0.012 0.026 0.04 0.056 0.035" />
+        </feComponentTransfer>
+        <feBlend in="SourceGraphic" in2="stepped" mode="multiply" result="blended" />
+        {/* Dark crack veins */}
+        <feTurbulence type="fractalNoise" baseFrequency="0.024 0.018"
+          numOctaves="3" seed="11" result="vein-noise" />
+        <feColorMatrix in="vein-noise" type="matrix"
+          values="0 0 0 0 0
+                  0 0 0 0 0
+                  0 0 0 0 0
+                  5 5 5 0 -3.8" result="vein-mask" />
+        <feFlood floodColor="#000000" floodOpacity="0.6" result="crack-dark" />
+        <feComposite in="crack-dark" in2="vein-mask" operator="in" result="cracks" />
+        <feMerge>
+          <feMergeNode in="blended" />
+          <feMergeNode in="cracks" />
+        </feMerge>
+      </filter>
+
+      {/* ── Cracked plaster — side walls (darker base, different seed) ──────── */}
+      <filter id="plaster-side" x="-2%" y="-2%" width="104%" height="104%"
+        colorInterpolationFilters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.048 0.038"
+          numOctaves="6" seed="7" result="base" />
+        <feComponentTransfer in="base" result="stepped">
+          <feFuncR type="discrete" tableValues="0.02 0.042 0.065 0.09 0.055" />
+          <feFuncG type="discrete" tableValues="0.018 0.038 0.058 0.08 0.05" />
+          <feFuncB type="discrete" tableValues="0.008 0.017 0.026 0.036 0.022" />
+        </feComponentTransfer>
+        <feBlend in="SourceGraphic" in2="stepped" mode="multiply" result="blended" />
+        <feTurbulence type="fractalNoise" baseFrequency="0.024 0.018"
+          numOctaves="3" seed="5" result="vein-noise" />
+        <feColorMatrix in="vein-noise" type="matrix"
+          values="0 0 0 0 0
+                  0 0 0 0 0
+                  0 0 0 0 0
+                  5 5 5 0 -3.8" result="vein-mask" />
+        <feFlood floodColor="#000000" floodOpacity="0.55" result="crack-dark" />
+        <feComposite in="crack-dark" in2="vein-mask" operator="in" result="cracks" />
+        <feMerge>
+          <feMergeNode in="blended" />
+          <feMergeNode in="cracks" />
+        </feMerge>
+      </filter>
+
+      {/* ── Floor texture ───────────────────────────────────────────────────── */}
+      <filter id="floor-tex" x="-2%" y="-2%" width="104%" height="104%"
+        colorInterpolationFilters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.06 0.02"
+          numOctaves="3" seed="2" result="base" />
+        <feComponentTransfer in="base" result="stepped">
+          <feFuncR type="discrete" tableValues="0.025 0.05 0.075 0.05" />
+          <feFuncG type="discrete" tableValues="0.022 0.044 0.066 0.044" />
+          <feFuncB type="discrete" tableValues="0.01 0.02 0.03 0.02" />
+        </feComponentTransfer>
+        <feBlend in="SourceGraphic" in2="stepped" mode="multiply" />
+      </filter>
+
+      {/* ── Screen glow — warm amber light from computer ────────────────────── */}
+      {/* userSpaceOnUse coords match the 1280×720 viewBox */}
+      <radialGradient id="screen-glow" gradientUnits="userSpaceOnUse"
+        cx="640" cy="400" r="640">
+        <stop offset="0%"   stopColor="#c8a820" stopOpacity="0.72" />
+        <stop offset="12%"  stopColor="#a88a18" stopOpacity="0.50" />
+        <stop offset="32%"  stopColor="#604e08" stopOpacity="0.25" />
+        <stop offset="62%"  stopColor="#1a1504" stopOpacity="0.08" />
+        <stop offset="100%" stopColor="#000000" stopOpacity="0"    />
+      </radialGradient>
+
+      {/* ── Tight halo — right behind the monitor ───────────────────────────── */}
+      <radialGradient id="monitor-halo" gradientUnits="userSpaceOnUse"
+        cx="640" cy="370" r="220">
+        <stop offset="0%"   stopColor="#e0c030" stopOpacity="0.55" />
+        <stop offset="40%"  stopColor="#9a7c14" stopOpacity="0.22" />
+        <stop offset="100%" stopColor="#000000" stopOpacity="0"    />
+      </radialGradient>
+
+      {/* ── Desk surface glow (green tint from screen below) ────────────────── */}
+      <radialGradient id="desk-glow" gradientUnits="userSpaceOnUse"
+        cx="640" cy="510" r="260">
+        <stop offset="0%"   stopColor="#80c830" stopOpacity="0.22" />
+        <stop offset="55%"  stopColor="#304810" stopOpacity="0.08" />
+        <stop offset="100%" stopColor="#000000" stopOpacity="0"    />
+      </radialGradient>
+
+      {/* ── Deep corner vignette ────────────────────────────────────────────── */}
+      <radialGradient id="vignette" gradientUnits="objectBoundingBox"
+        cx="50%" cy="50%" r="70%">
+        <stop offset="0%"   stopColor="#000" stopOpacity="0"    />
+        <stop offset="52%"  stopColor="#000" stopOpacity="0.05" />
+        <stop offset="78%"  stopColor="#000" stopOpacity="0.55" />
+        <stop offset="100%" stopColor="#000" stopOpacity="0.97" />
+      </radialGradient>
+    </defs>
   )
 }
 
-function AirVent({ scale, offset = { x: 0, y: 0 }, onEasterEgg }) {
-  const s = scale
-  const slots = 5
+// ── Air vent grate (reusable) ─────────────────────────────────────────────────
+function VentGrate({ x, y, w, h, slotCount = 5, onClick }) {
+  const slotH = (h - 6) / slotCount
   return (
-    <div
-      onClick={onEasterEgg}
-      title="..."
-      style={{
-        position: 'absolute',
-        right: `calc(4% + ${-offset.x * s}px)`,
-        top: `calc(14% + ${offset.y * s}px)`,
-        width: 44 * s, height: 28 * s,
-        background: '#141412',
-        border: `${2 * s}px solid #282820`,
-        cursor: 'pointer',
-        display: 'flex', flexDirection: 'column',
-        justifyContent: 'space-around',
-        padding: `${3 * s}px ${4 * s}px`,
-        boxShadow: `inset 0 0 ${6 * s}px rgba(0,0,0,0.8)`,
-        imageRendering: 'pixelated',
-      }}
-    >
-      {Array.from({ length: slots }).map((_, i) => (
-        <div key={i} style={{
-          height: 2 * s,
-          background: C.ventGrate,
-          borderTop: `${1 * s}px solid #2a2a28`,
-        }} />
+    <g onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
+      <rect x={x} y={y} width={w} height={h} fill="#0e0d0a" stroke="#1e1c16" strokeWidth="2" />
+      {Array.from({ length: slotCount }).map((_, i) => (
+        <rect key={i}
+          x={x + 3} y={y + 3 + i * slotH}
+          width={w - 6} height={Math.max(2, slotH - 3)}
+          fill="#080806" stroke="#252318" strokeWidth="1" />
       ))}
-    </div>
+      {/* inner shadow */}
+      <rect x={x} y={y} width={w} height={h}
+        fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth="3"
+        style={{ pointerEvents: 'none' }} />
+    </g>
   )
 }
 
-function Desk({ scale, showMug, showBook }) {
-  const s = scale
-  const deskW = 72   // % of back wall width
-  const deskH = 10   // % of total height
-  return (
-    <>
-      {/* Desk surface */}
-      <div style={{
-        position: 'absolute',
-        left: '14%', right: '14%',
-        bottom: `${14 + 3}%`,
-        height: `${deskH}%`,
-        background: `linear-gradient(180deg, ${C.deskHighlight} 0%, ${C.desk} 30%, ${C.deskShade} 100%)`,
-        boxShadow: `0 ${4 * s}px ${16 * s}px rgba(0,0,0,0.7)`,
-        zIndex: 4,
-      }}>
-        {/* Desk grain lines */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `repeating-linear-gradient(90deg,
-            transparent 0px, transparent ${31 * s}px,
-            rgba(0,0,0,0.12) ${31 * s}px, rgba(0,0,0,0.12) ${32 * s}px)`,
-        }} />
-        {/* Front edge highlight */}
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0,
-          height: 3 * s,
-          background: '#1a1208',
-        }} />
-      </div>
-
-      {/* Desk legs */}
-      {[18, 78].map((pct, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          left: `calc(14% + (72% * ${pct / 100}))`,
-          bottom: '14%',
-          width: 4 * s,
-          height: `${deskH * 0.8}%`,
-          background: C.deskLeg,
-          zIndex: 3,
-        }} />
-      ))}
-
-      {/* Mug on desk */}
-      {showMug && (
-        <div style={{
-          position: 'absolute',
-          right: 'calc(14% + 6%)',
-          bottom: `${14 + 3 + deskH}%`,
-          zIndex: 5,
-        }}>
-          <div style={{
-            width: 14 * s, height: 16 * s,
-            background: C.mug,
-            borderTop: `${2 * s}px solid ${C.mugRim}`,
-            boxShadow: `${1 * s}px ${2 * s}px ${4 * s}px rgba(0,0,0,0.5)`,
-          }} />
-          {/* Handle */}
-          <div style={{
-            position: 'absolute',
-            right: -4 * s, top: 4 * s,
-            width: 5 * s, height: 8 * s,
-            border: `${2 * s}px solid ${C.mugRim}`,
-            borderLeft: 'none',
-          }} />
-        </div>
-      )}
-
-      {/* Book on desk */}
-      {showBook && (
-        <div style={{
-          position: 'absolute',
-          left: 'calc(14% + 5%)',
-          bottom: `${14 + 3 + deskH}%`,
-          zIndex: 5,
-        }}>
-          {/* Book body */}
-          <div style={{
-            width: 18 * s, height: 22 * s,
-            background: C.book,
-            boxShadow: `${2 * s}px ${2 * s}px ${6 * s}px rgba(0,0,0,0.6)`,
-            position: 'relative',
-          }}>
-            {/* Pages visible from side */}
-            <div style={{
-              position: 'absolute', top: 2 * s, right: -2 * s,
-              width: 3 * s, height: `calc(100% - ${4 * s}px)`,
-              background: C.bookPage,
-              backgroundImage: `repeating-linear-gradient(0deg,
-                transparent, transparent ${2 * s}px,
-                rgba(0,0,0,0.1) ${2 * s}px, rgba(0,0,0,0.1) ${2.5 * s}px)`,
-            }} />
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-// ── Main Room component ───────────────────────────────────────────────────────
-
+// ── Main Room component ────────────────────────────────────────────────────────
 export default function Room({ onComputerClick, scale = 1, settings }) {
   const dec = settings?.decorations || {}
   const showAirVent  = dec.airVent?.show  !== false
@@ -207,144 +139,162 @@ export default function Room({ onComputerClick, scale = 1, settings }) {
   const showMug      = dec.deskMug?.show  !== false
   const showBook     = dec.deskBook?.show !== false
 
+  const s = scale
+
+  // Design space: 1280 × 720
+  // Room corners (back wall edges in perspective):
+  //   Back wall TL (192, 58)  TR (1088, 58)  BR (1088, 612)  BL (192, 612)
+  // Everything derived from these four points.
+
+  // Desk: sits against back wall bottom, centred
+  const deskL = 272, deskR = 1008   // x extents on back wall
+  const deskTop = 494, deskBot = 530 // y in SVG space
+  const deskMidX = 640
+
+  // Luck sign: on back wall, left of centre (x=350 stays visible at 800px viewport)
+  const lsX = 350, lsY = 155, lsW = 62, lsH = 80
+
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: C.backWall,
+      background: '#060504',
       overflow: 'hidden',
       imageRendering: 'pixelated',
     }}>
-      {/* Ceiling */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: '11%',
-        background: `linear-gradient(180deg, ${C.ceiling} 0%, #130f0a 100%)`,
-        borderBottom: `${3}px solid ${C.ceilingJoin}`,
-        zIndex: 3,
-      }} />
-      <div style={{
-        position: 'absolute', top: '11%', left: 0, right: 0, height: 20 * scale,
-        background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 100%)',
-        pointerEvents: 'none', zIndex: 3,
-      }} />
+      <svg
+        viewBox="0 0 1280 720"
+        preserveAspectRatio="xMidYMid slice"
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+      >
+        <Defs />
 
-      {/* Floor */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0, height: '14%',
-        background: `linear-gradient(0deg, ${C.floor} 0%, #15120c 100%)`,
-        borderTop: `3px solid ${C.floorJoin}`,
-        zIndex: 3,
-      }}>
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `repeating-linear-gradient(90deg,
-            transparent 0px, transparent 119px,
-            rgba(0,0,0,0.18) 119px, rgba(0,0,0,0.18) 121px)`,
-        }} />
-      </div>
-      <div style={{
-        position: 'absolute', bottom: '14%', left: 0, right: 0, height: 24 * scale,
-        background: 'linear-gradient(0deg, rgba(0,0,0,0.55) 0%, transparent 100%)',
-        pointerEvents: 'none', zIndex: 3,
-      }} />
+        {/* ── CEILING ───────────────────────────────────────────────────────── */}
+        <polygon points="0,0 1280,0 1088,58 192,58" fill="#0b0907" filter="url(#plaster-side)" />
+        {/* ceiling/wall join line */}
+        <line x1="192" y1="58" x2="1088" y2="58" stroke="#252018" strokeWidth="2" />
 
-      {/* Left side wall */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, bottom: 0, width: '16%',
-        background: `linear-gradient(to right, ${C.sideWall} 0%, #161410 60%, transparent 100%)`,
-        zIndex: 2,
-      }}>
-        <div style={{
-          position: 'absolute', top: '11%', bottom: '14%', right: 0,
-          width: 3, background: C.ceilingJoin,
-        }} />
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, transparent 100%)',
-        }} />
-      </div>
+        {/* ── LEFT WALL ─────────────────────────────────────────────────────── */}
+        <polygon points="0,0 192,58 192,612 0,720" fill="#131009" filter="url(#plaster-side)" />
+        {/* edge seam */}
+        <line x1="192" y1="58" x2="192" y2="612" stroke="#201c10" strokeWidth="2" />
 
-      {/* Right side wall */}
-      <div style={{
-        position: 'absolute', top: 0, right: 0, bottom: 0, width: '16%',
-        background: `linear-gradient(to left, ${C.sideWall} 0%, #161410 60%, transparent 100%)`,
-        zIndex: 2,
-      }}>
-        <div style={{
-          position: 'absolute', top: '11%', bottom: '14%', left: 0,
-          width: 3, background: C.ceilingJoin,
-        }} />
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(to left, rgba(0,0,0,0.65) 0%, transparent 100%)',
-        }} />
-      </div>
+        {/* ── RIGHT WALL ────────────────────────────────────────────────────── */}
+        <polygon points="1088,58 1280,0 1280,720 1088,612" fill="#131009" filter="url(#plaster-side)" />
+        <line x1="1088" y1="58" x2="1088" y2="612" stroke="#201c10" strokeWidth="2" />
 
-      {/* Back wall with brick texture */}
+        {/* ── FLOOR ─────────────────────────────────────────────────────────── */}
+        <polygon points="192,612 1088,612 1280,720 0,720" fill="#0f0d08" filter="url(#floor-tex)" />
+        {/* floor/wall join */}
+        <line x1="192" y1="612" x2="1088" y2="612" stroke="#1e1a0e" strokeWidth="2" />
+        {/* floor tile lines (faint) */}
+        {[320, 448, 576, 704, 832, 960].map(x => (
+          <line key={x} x1={x} y1={612} x2={x} y2={720} stroke="rgba(0,0,0,0.3)" strokeWidth="1" />
+        ))}
+
+        {/* ── BACK WALL ─────────────────────────────────────────────────────── */}
+        <rect x="192" y="58" width="896" height="554" fill="#201c12" filter="url(#plaster-back)" />
+
+        {/* ── SCREEN GLOW on wall ────────────────────────────────────────────── */}
+        <rect x="192" y="58" width="896" height="554"
+          fill="url(#monitor-halo)" style={{ pointerEvents: 'none' }} />
+        <rect x="0" y="0" width="1280" height="720"
+          fill="url(#screen-glow)" style={{ pointerEvents: 'none' }} />
+
+        {/* ── DESK ──────────────────────────────────────────────────────────── */}
+        {/* Desk top surface */}
+        <rect x={deskL} y={deskTop} width={deskR - deskL} height={deskBot - deskTop}
+          fill="#2e2010" />
+        {/* highlight on front edge */}
+        <rect x={deskL} y={deskBot - 3} width={deskR - deskL} height={3}
+          fill="#1a1208" />
+        {/* desk glow from monitor below */}
+        <rect x={deskL} y={deskTop} width={deskR - deskL} height={deskBot - deskTop}
+          fill="url(#desk-glow)" style={{ pointerEvents: 'none' }} />
+        {/* wood grain lines */}
+        {[310, 360, 430, 510, 580, 660, 740, 810, 880, 940].map(x => (
+          <line key={x} x1={x} y1={deskTop} x2={x} y2={deskBot}
+            stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
+        ))}
+        {/* Desk legs */}
+        <rect x={deskL + 18} y={deskBot} width={8} height={72} fill="#1e1408" />
+        <rect x={deskR - 26} y={deskBot} width={8} height={72} fill="#1e1408" />
+
+        {/* Desk objects */}
+        {/* Mug */}
+        {showMug && (
+          <g transform={`translate(${deskR - 80}, ${deskTop - 28})`}>
+            <rect x="0" y="6" width="20" height="22" fill="#2a2a2a" />
+            <rect x="0" y="6" width="20" height="3" fill="#3a3a3a" />
+            {/* handle */}
+            <path d="M20,10 Q29,10 29,17 Q29,24 20,24" fill="none" stroke="#3a3a3a" strokeWidth="3" />
+          </g>
+        )}
+        {/* Book */}
+        {showBook && (
+          <g transform={`translate(${deskL + 40}, ${deskTop - 34})`}>
+            <rect x="0" y="0" width="26" height="34" fill="#1a381a" />
+            <rect x="23" y="2" width="4" height="30" fill="#c0a860" />
+            {[4, 8, 12, 16, 20, 24, 28].map(y => (
+              <line key={y} x1="23" y1={y} x2="27" y2={y}
+                stroke="rgba(0,0,0,0.2)" strokeWidth="1" />
+            ))}
+          </g>
+        )}
+
+        {/* ── CEILING VENT (top center) ──────────────────────────────────────── */}
+        {showAirVent && (
+          <VentGrate x={590} y={8} w={100} h={38} slotCount={4} />
+        )}
+
+        {/* ── RIGHT WALL VENT ────────────────────────────────────────────────── */}
+        {showAirVent && (
+          <VentGrate x={1000} y={100} w={56} h={38} slotCount={5} />
+        )}
+
+        {/* ── LUCK SIGN on back wall ─────────────────────────────────────────── */}
+        {showLuckSign && (
+          <g>
+            <rect x={lsX} y={lsY} width={lsW} height={lsH}
+              fill="#cccca8" stroke="#909070" strokeWidth="2" />
+            {/* inner border */}
+            <rect x={lsX + 4} y={lsY + 4} width={lsW - 8} height={lsH - 8}
+              fill="none" stroke="#a0a080" strokeWidth="1" />
+            {/* shamrock placeholder — 3 circles */}
+            <circle cx={lsX + lsW / 2}      cy={lsY + 26} r={7} fill="#2a5a22" opacity="0.7" />
+            <circle cx={lsX + lsW / 2 - 8}  cy={lsY + 34} r={7} fill="#2a5a22" opacity="0.7" />
+            <circle cx={lsX + lsW / 2 + 8}  cy={lsY + 34} r={7} fill="#2a5a22" opacity="0.7" />
+            <rect   cx={lsX + lsW / 2}       cy={lsY + 36} x={lsX + lsW / 2 - 2} y={lsY + 38} width="4" height="8" fill="#1e4018" />
+            {/* text */}
+            <text x={lsX + lsW / 2} y={lsY + 66}
+              textAnchor="middle" fontFamily="'Press Start 2P',monospace"
+              fontSize="7" fill="#383828" letterSpacing="1">LUCK</text>
+          </g>
+        )}
+
+        {/* ── DEEP VIGNETTE (corners go near-black) ─────────────────────────── */}
+        <rect x="0" y="0" width="1280" height="720"
+          fill="url(#vignette)" style={{ pointerEvents: 'none' }} />
+
+        {/* ── Ambient darkness overlay — top and bottom edges ───────────────── */}
+        <rect x="0" y="0"   width="1280" height="80"
+          fill="url(#top-fade)" style={{ pointerEvents: 'none' }}
+          fillOpacity="0.6" />
+
+      </svg>
+
+      {/* ── Computer — React component layered over SVG ───────────────────── */}
+      {/* Position: centred, sitting on desk surface                          */}
+      {/* Desk surface is at ~68.6% from top (494/720) of design height       */}
+      {/* We use bottom % so it scales with viewport                          */}
       <div style={{
         position: 'absolute',
-        top: '11%', bottom: '14%', left: '16%', right: '16%',
-        backgroundImage: BRICK_BG,
-        zIndex: 1,
+        left: '50%',
+        bottom: '26%',             // ≈ desk surface in the SVG (720-494)/720 = 31.4%, minus desk depth ≈ 26%
+        transform: 'translateX(-50%)',
+        zIndex: 10,
       }}>
-        {/* Crack stains — atmospheric details */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `
-            radial-gradient(ellipse 8px 60px at 30% 35%, rgba(0,0,0,0.35) 0%, transparent 100%),
-            radial-gradient(ellipse 6px 40px at 65% 55%, rgba(0,0,0,0.25) 0%, transparent 100%),
-            radial-gradient(ellipse 10px 80px at 80% 25%, rgba(0,0,0,0.2) 0%, transparent 100%)
-          `,
-          pointerEvents: 'none',
-        }} />
-
-        {/* Corner vignette */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.45) 100%)',
-          pointerEvents: 'none', zIndex: 2,
-        }} />
-
-        {/* Decorations on back wall */}
-        {showLuckSign && (
-          <LuckSign scale={scale} offset={dec.luckSign || {}} />
-        )}
-        {showAirVent && (
-          <AirVent scale={scale} offset={dec.airVent || {}} onEasterEgg={() => {}} />
-        )}
-
-        {/* Desk + desk objects */}
-        <Desk scale={scale} showMug={showMug} showBook={showBook} />
-
-        {/* Computer on the desk */}
-        <div style={{
-          position: 'absolute',
-          left: '50%',
-          bottom: `${14 + 3 + 10 + 0.5}%`,
-          transform: 'translateX(-50%)',
-          zIndex: 6,
-        }}>
-          <Computer onClick={onComputerClick} scale={scale} />
-        </div>
-
-        {/* Monitor glow on desk */}
-        <div style={{
-          position: 'absolute',
-          left: '50%',
-          bottom: `${14 + 3 + 10}%`,
-          transform: 'translateX(-50%)',
-          width: 200 * scale, height: 60 * scale,
-          background: 'radial-gradient(ellipse at center top, rgba(0,255,65,0.06) 0%, transparent 70%)',
-          pointerEvents: 'none',
-          zIndex: 5,
-        }} />
+        <Computer onClick={onComputerClick} scale={s} />
       </div>
-
-      {/* Overall vignette */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'radial-gradient(ellipse 85% 85% at 50% 50%, transparent 35%, rgba(0,0,0,0.6) 100%)',
-        pointerEvents: 'none', zIndex: 10,
-      }} />
     </div>
   )
 }

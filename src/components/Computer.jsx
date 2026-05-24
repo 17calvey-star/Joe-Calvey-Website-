@@ -17,11 +17,12 @@ export default function Computer({ onClick, scale = 1 }) {
     return () => clearTimeout(flickerRef.current)
   }, [])
 
+  // Screen glows green; the *case* and surroundings reflect warm amber
   const screenGlow = hovered
-    ? `0 0 ${32 * s}px #00ff41, 0 0 ${8 * s}px #00ff41, inset 0 0 ${18 * s}px rgba(0,255,65,0.18)`
+    ? `0 0 ${40 * s}px rgba(0,255,65,0.55), 0 0 ${12 * s}px rgba(0,255,65,0.8), inset 0 0 ${20 * s}px rgba(0,255,65,0.2)`
     : flickerOn
-      ? `0 0 ${8 * s}px rgba(0,255,65,0.35), inset 0 0 ${6 * s}px rgba(0,255,65,0.08)`
-      : `0 0 ${4 * s}px rgba(0,255,65,0.12)`
+      ? `0 0 ${14 * s}px rgba(0,255,65,0.45), inset 0 0 ${8 * s}px rgba(0,255,65,0.1)`
+      : `0 0 ${6 * s}px rgba(0,255,65,0.18)`
 
   return (
     <motion.div
@@ -33,16 +34,16 @@ export default function Computer({ onClick, scale = 1 }) {
       whileTap={{ scale: 0.96 }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
     >
-      {/* Monitor body */}
+      {/* Monitor body — aged cream/ivory plastic, lit by screen glow */}
       <div style={{
         width: 200 * s,
-        background: '#2c271c',
-        border: `${4 * s}px solid #181410`,
-        boxShadow: `inset ${2 * s}px ${2 * s}px 0 #3c352a, inset -${2 * s}px -${2 * s}px 0 #100d08, 0 ${8 * s}px ${32 * s}px rgba(0,0,0,0.8)`,
+        background: '#c8b888',
+        border: `${4 * s}px solid #8a7a50`,
+        boxShadow: `inset ${2 * s}px ${2 * s}px 0 #ddd0a0, inset -${2 * s}px -${2 * s}px 0 #706040, 0 ${10 * s}px ${40 * s}px rgba(0,0,0,0.9), 0 0 ${60 * s}px rgba(180,150,20,0.35)`,
         imageRendering: 'pixelated',
       }}>
         {/* Top bezel */}
-        <div style={{ height: 14 * s, background: '#322c20' }} />
+        <div style={{ height: 14 * s, background: '#c0aa7a' }} />
 
         {/* Screen area */}
         <div style={{ padding: `0 ${14 * s}px` }}>
@@ -100,7 +101,7 @@ export default function Computer({ onClick, scale = 1 }) {
 
         {/* Bottom bezel */}
         <div style={{
-          height: 28 * s, background: '#2a2418',
+          height: 28 * s, background: '#b8a470',
           display: 'flex', alignItems: 'center',
           padding: `0 ${16 * s}px`, gap: 8 * s,
         }}>
@@ -111,23 +112,24 @@ export default function Computer({ onClick, scale = 1 }) {
             boxShadow: hovered ? `0 0 ${6 * s}px #00ff41` : 'none',
             transition: 'background 0.2s, box-shadow 0.2s',
           }} />
-          <div style={{ flex: 1, height: 4 * s, background: '#181410', border: `${1 * s}px solid #0a0806` }} />
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ width: 3 * s, height: 12 * s, background: '#181410', border: `${1 * s}px solid #0a0806` }} />
+          {/* Floppy drive slot */}
+          <div style={{ flex: 1, height: 6 * s, background: '#706040', border: `${1 * s}px solid #504830` }} />
+          {[0, 1].map(i => (
+            <div key={i} style={{ width: 4 * s, height: 14 * s, background: '#706040', border: `${1 * s}px solid #504830` }} />
           ))}
         </div>
       </div>
 
-      {/* Keyboard */}
+      {/* Keyboard — cream coloured */}
       <div style={{
-        width: 220 * s, height: 20 * s,
-        background: '#28221a',
-        border: `${2 * s}px solid #181410`,
+        width: 220 * s, height: 22 * s,
+        background: '#b8a870',
+        border: `${2 * s}px solid #8a7a50`,
         margin: `${2 * s}px auto 0`,
-        boxShadow: `0 ${2 * s}px ${6 * s}px rgba(0,0,0,0.6)`,
+        boxShadow: `0 ${3 * s}px ${8 * s}px rgba(0,0,0,0.8)`,
         backgroundImage: `repeating-linear-gradient(90deg,
           transparent 0px, transparent ${8 * s}px,
-          rgba(0,0,0,0.15) ${8 * s}px, rgba(0,0,0,0.15) ${9 * s}px)`,
+          rgba(0,0,0,0.12) ${8 * s}px, rgba(0,0,0,0.12) ${9 * s}px)`,
       }} />
     </motion.div>
   )
