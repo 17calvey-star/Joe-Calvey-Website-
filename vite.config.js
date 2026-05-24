@@ -161,8 +161,18 @@ function adminApiPlugin() {
           try {
             const { message } = await readBody(req).catch(() => ({ message: '' }))
             const msg = message?.trim() || `update: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
-            execSync(`git add -A && git commit -m "${msg}" && git push`, { encoding: 'utf-8' })
-            return jsonRes(res, { ok: true, message: msg })
+            const sshEnv = { ...process.env, GIT_SSH_COMMAND: 'ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no' }
+
+            execSync('git add -A', { encoding: 'utf-8', env: sshEnv })
+
+            // Check if there's actually anything staged — skip commit if clean
+            const staged = execSync('git diff --cached --name-only', { encoding: 'utf-8' }).trim()
+            if (staged) {
+              execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { encoding: 'utf-8', env: sshEnv })
+            }
+
+            execSync('git push', { encoding: 'utf-8', env: sshEnv })
+            return jsonRes(res, { ok: true, message: staged ? msg : '(nothing to commit — pushed existing commits)' })
           } catch (e) { return jsonRes(res, { error: e.message }, 500) }
         }
 
