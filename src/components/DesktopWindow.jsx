@@ -7,13 +7,24 @@ const workGlob = import.meta.glob(
   '../assets/images/projects/*/work/*.{png,jpg,jpeg,webp,PNG,JPG,JPEG}',
   { eager: false }   // lazy — only loaded when window opens
 )
-async function loadWorkImages(id) {
+async function loadWorkImages(id, imageOrder = []) {
   const entries = Object.entries(workGlob).filter(([p]) => p.includes(`/${id}/work/`))
-  const loaded  = await Promise.all(entries.map(async ([, fn]) => {
+  const loaded  = await Promise.all(entries.map(async ([path, fn]) => {
     const mod = await fn()
-    return mod.default
+    return { url: mod.default, filename: path.split('/').pop() }
   }))
-  return loaded
+  // Sort by imageOrder if provided; unrecognised files go to the end
+  if (imageOrder.length > 0) {
+    loaded.sort((a, b) => {
+      const ai = imageOrder.indexOf(a.filename)
+      const bi = imageOrder.indexOf(b.filename)
+      if (ai === -1 && bi === -1) return 0
+      if (ai === -1) return 1
+      if (bi === -1) return -1
+      return ai - bi
+    })
+  }
+  return loaded.map(l => l.url)
 }
 
 const coverGlob = import.meta.glob(
@@ -128,13 +139,14 @@ export default function DesktopWindow({ project, content, scale, zIndex, isActiv
   const coverUrl  = getCoverUrl(project.id)
   const embedUrl  = getEmbedUrl(project.videoUrl)
 
-  // Lazy-load work images when window opens
+  // Lazy-load work images when window opens (re-run if imageOrder changes)
+  const imageOrderKey = (project.imageOrder || []).join(',')
   useEffect(() => {
-    loadWorkImages(project.id).then(imgs => {
+    loadWorkImages(project.id, project.imageOrder || []).then(imgs => {
       setWorkImages(imgs)
       setImgIdx(0)
     })
-  }, [project.id])
+  }, [project.id, imageOrderKey]) // eslint-disable-line
 
   // Keyboard nav for images
   useEffect(() => {
@@ -175,7 +187,7 @@ export default function DesktopWindow({ project, content, scale, zIndex, isActiv
   const LEFT_W = 220 * s
   const RIGHT_W = W - LEFT_W - 1
 
-  const allImages = coverUrl ? [coverUrl, ...workImages] : workImages
+  const allImages = workImages
 
   return (
     <>

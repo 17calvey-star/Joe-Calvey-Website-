@@ -1,18 +1,64 @@
 [
   {
     "id": "example-project",
-    "title": "Example Project",
+    "title": "TP Brief",
     "brief": "A short description shown below the icon.",
     "icon": "folder",
     "colour": "#4a9eff",
     "module": "",
     "tags": [],
-    "year": "2024",
-    "desktopPos": { "x": 0, "y": 0 },
+    "year": "2025/2026",
+    "desktopPos": {
+      "x": 0,
+      "y": 0
+    },
     "hidden": false,
     "videoUrl": "",
     "pdfUrl": "",
     "externalLink": "",
-    "order": 0
+    "order": 0,
+    "imageOrder": [
+      "DripbagThorpePark (1).png",
+      "Thorpe Park heart monitor2.png",
+      "PerscriptionThorpe.png"
+    ]
+  },
+  {
+    "id": "mpkj1vjyu2v",
+    "title": "Example",
+    "brief": "",
+    "icon": "folder",
+    "colour": "#9f1948",
+    "tags": [],
+    "year": "2026",
+    "module": "",
+    "hidden": false,
+    "videoUrl": "",
+    "pdfUrl": "",
+    "externalLink": "",
+    "desktopPos": {
+      "x": 0,
+      "y": 0
+    },
+    "order": 1
+  },
+  {
+    "id": "mpoqrycktcb",
+    "title": "New Project",
+    "brief": "",
+    "icon": "folder",
+    "colour": "#4a9eff",
+    "tags": [],
+    "year": "2026",
+    "module": "",
+    "hidden": false,
+    "videoUrl": "",
+    "pdfUrl": "",
+    "externalLink": "",
+    "desktopPos": {
+      "x": 0,
+      "y": 0
+    },
+    "order": 9
   }
 ]

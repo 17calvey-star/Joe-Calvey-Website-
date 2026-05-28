@@ -6,7 +6,12 @@ const SANS   = "'Inter', sans-serif"
 const ACCENT = '#00ff41'
 
 const api = (url, opts = {}) =>
-  fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts }).then(r => r.json())
+  fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts })
+    .then(r => r.text())
+    .then(text => {
+      if (!text) throw new Error('Server returned empty response')
+      try { return JSON.parse(text) } catch (_) { throw new Error(`Server returned non-JSON: ${text.slice(0, 80)}`) }
+    })
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
@@ -316,15 +321,58 @@ function ProjectsTab({ projects, content, hasImages, onChange }) {
               <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 8 }}>
                 WORK IMAGES {hasImages[editing] ? `(${hasImages[editing].length} uploaded)` : '(none)'}
               </div>
-              {hasImages[editing]?.map(img => (
-                <div key={img} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.45)', flex: 1 }}>{img}</span>
-                  <Btn danger onClick={async () => {
-                    await api('/api/delete-work-image', { method: 'DELETE', body: JSON.stringify({ projectId: editing, filename: img }) })
-                    setStatus('Deleted — restart dev server to update')
-                  }}>Delete</Btn>
-                </div>
-              ))}
+              {(() => {
+                const allUploaded = hasImages[editing] || []
+                const rawOrder    = editingProject?.imageOrder || []
+                // Respect saved order; append any new files not yet in the order list
+                const ordered = [
+                  ...rawOrder.filter(f => allUploaded.includes(f)),
+                  ...allUploaded.filter(f => !rawOrder.includes(f)),
+                ]
+                const move = (idx, dir) => {
+                  const next = [...ordered]
+                  const target = idx + dir
+                  if (target < 0 || target >= next.length) return
+                  ;[next[idx], next[target]] = [next[target], next[idx]]
+                  updateProject(editing, 'imageOrder', next)
+                }
+                return ordered.map((img, idx) => (
+                  <div key={img} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    {/* Order buttons */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <button
+                        onClick={() => move(idx, -1)}
+                        disabled={idx === 0}
+                        title="Move up"
+                        style={{
+                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                          color: idx === 0 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.55)',
+                          width: 20, height: 16, cursor: idx === 0 ? 'default' : 'pointer',
+                          fontSize: 9, lineHeight: 1, padding: 0,
+                        }}
+                      >▲</button>
+                      <button
+                        onClick={() => move(idx, 1)}
+                        disabled={idx === ordered.length - 1}
+                        title="Move down"
+                        style={{
+                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                          color: idx === ordered.length - 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.55)',
+                          width: 20, height: 16, cursor: idx === ordered.length - 1 ? 'default' : 'pointer',
+                          fontSize: 9, lineHeight: 1, padding: 0,
+                        }}
+                      >▼</button>
+                    </div>
+                    <span style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.3)', minWidth: 16 }}>{idx + 1}.</span>
+                    <span style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.45)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img}</span>
+                    <Btn danger onClick={async () => {
+                      await api('/api/delete-work-image', { method: 'DELETE', body: JSON.stringify({ projectId: editing, filename: img }) })
+                      updateProject(editing, 'imageOrder', ordered.filter(f => f !== img))
+                      setStatus('Deleted — restart dev server to update')
+                    }}>Delete</Btn>
+                  </div>
+                ))
+              })()}
               <input ref={workFileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
                 onChange={e => {
                   const files = Array.from(e.target.files || [])
@@ -420,7 +468,7 @@ function SettingsTab({ settings, onChange }) {
   }
 
   return (
-    <div style={{ padding: 20, maxWidth: 480 }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: 20, maxWidth: 480 }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>SITE</div>
         <Field label="SITE TITLE" value={local.siteTitle || ''} onChange={v => set('siteTitle', v)} placeholder="Joe Calvey" />
@@ -504,7 +552,7 @@ function DeployTab() {
   }
 
   return (
-    <div style={{ padding: 20, maxWidth: 480 }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: 20, maxWidth: 480 }}>
       <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 16 }}>DEPLOY TO NETLIFY</div>
 
       {gitInfo && (
@@ -572,7 +620,7 @@ function TodoTab() {
   const remove = (id) => persist(todos.filter(t => t.id !== id))
 
   return (
-    <div style={{ padding: 20, maxWidth: 480 }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: 20, maxWidth: 480 }}>
       <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 16 }}>TO-DO</div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
@@ -616,11 +664,83 @@ function TodoTab() {
   )
 }
 
+// ── Contact tab ───────────────────────────────────────────────────────────────
+
+function ContactTab({ settings, onChange }) {
+  const [local, setLocal]   = useState(settings?.contact || {})
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+
+  useEffect(() => { setLocal(settings?.contact || {}) }, [settings])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const next = { ...settings, contact: local }
+      await api('/api/save-settings', { method: 'POST', body: JSON.stringify({ settings: next }) })
+      onChange({ settings: next })
+      setStatus('Saved')
+      setTimeout(() => setStatus(''), 2000)
+    } catch (e) {
+      setStatus('Error: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  const set = (key, val) => setLocal(c => ({ ...c, [key]: val }))
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', padding: 20, maxWidth: 480 }}>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          IDENTITY
+        </div>
+        <Field label="NAME"     value={local.name     || ''} onChange={v => set('name',     v)} placeholder="Joe Calvey" />
+        <Field label="LOCATION" value={local.location || ''} onChange={v => set('location', v)} placeholder="London, UK" />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          DIRECT CONTACT
+        </div>
+        <Field label="EMAIL" value={local.email || ''} onChange={v => set('email', v)} placeholder="hello@example.com" />
+        <Field label="PHONE" value={local.phone || ''} onChange={v => set('phone', v)} placeholder="+44 7700 000000" />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          SOCIAL / LINKS
+        </div>
+        <Field label="LINKEDIN"       value={local.linkedin  || ''} onChange={v => set('linkedin',  v)} placeholder="joecalvey  or  linkedin.com/in/joecalvey" />
+        <Field label="INSTAGRAM"      value={local.instagram || ''} onChange={v => set('instagram', v)} placeholder="@joecalvey" />
+        <Field label="PORTFOLIO SITE" value={local.portfolio || ''} onChange={v => set('portfolio', v)} placeholder="joecalvey.com" />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          PAGE MESSAGE
+        </div>
+        <Field label="SHORT MESSAGE (shown at top of Contact page)"
+          value={local.message || ''} onChange={v => set('message', v)}
+          multiline placeholder="Feel free to reach out…" />
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginTop: -8 }}>
+          Leave blank to hide this section entirely.
+        </div>
+      </div>
+
+      {status && <div style={{ marginBottom: 12, fontSize: 11, fontFamily: FONT, color: ACCENT }}>{status}</div>}
+      <Btn accent onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Contact'}</Btn>
+    </div>
+  )
+}
+
 // ── Main Admin panel ──────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'projects', label: 'Projects' },
   { id: 'settings', label: 'Settings' },
+  { id: 'contact',  label: 'Contact' },
   { id: 'deploy',   label: 'Deploy' },
   { id: 'todo',     label: 'To-do' },
 ]
@@ -737,8 +857,11 @@ export default function Admin({ projects, settings, content, onClose, onChange }
           ))}
         </div>
 
-        {/* Tab content */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+        {/* Tab content — overflow: hidden here so each tab manages its own scroll */}
+        <div
+          style={{ flex: 1, overflow: 'hidden' }}
+          onWheel={e => e.stopPropagation()}
+        >
           {tab === 'projects' && (
             <ProjectsTab
               projects={adminData.projects}
@@ -749,6 +872,12 @@ export default function Admin({ projects, settings, content, onClose, onChange }
           )}
           {tab === 'settings' && (
             <SettingsTab
+              settings={adminData.settings}
+              onChange={handleChange}
+            />
+          )}
+          {tab === 'contact' && (
+            <ContactTab
               settings={adminData.settings}
               onChange={handleChange}
             />

@@ -1,509 +1,877 @@
-import Computer from './Computer'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import HorrorOverlay from './HorrorOverlay'
+import SafeLock from './SafeLock'
+import roomBg    from '../assets/images/RB.png'
+import fanImg    from '../assets/images/FAN.png'
+import amBookImg       from '../assets/images/AMmug.png'
+import boxesImg        from '../assets/images/boxes.png'
+import safeWebImg      from '../assets/images/SafeWeb1.png'
+import safeOpenedImg  from '../assets/images/SafeOpened.png'
+import tableOverlayImg from '../assets/images/Tableoverlay.png'
+import contactPhoneImg from '../assets/images/ContactPhone.png'
+import fridgeAmbient from '../assets/audio/ambient/fridge.mp3'
 
+// ── Ambient audio ─────────────────────────────────────────────────────────────
+// Volume for the fridge hum loop. Adjust here to taste (0 = silent, 1 = full).
+const AMBIENT_VOLUME = 0.25
+
+// ── Animations ────────────────────────────────────────────────────────────────
 const ANIM = `
 @keyframes room-breathe {
-  0%,100% { transform: scale(1) translateZ(0); }
+  0%,100% { transform: scale(1) translateZ(0);     }
   50%      { transform: scale(1.006) translateZ(0); }
 }
-@keyframes glow-flicker {
+@keyframes crt-flicker {
   0%,100% { opacity:1;    }
-  5%      { opacity:0.82; }
-  6%      { opacity:1;    }
-  38%     { opacity:1;    }
-  39%     { opacity:0.88; }
-  40%     { opacity:1;    }
-  71%     { opacity:1;    }
-  72%     { opacity:0.78; }
-  73%     { opacity:0.95; }
-  74%     { opacity:1;    }
+  4%      { opacity:0.86; }
+  5%      { opacity:1;    }
+  49%     { opacity:0.80; }
+  50%     { opacity:0.96; }
+  83%     { opacity:0.90; }
+  84%     { opacity:1;    }
 }
-@keyframes fog-pulse {
-  0%,100% { opacity:0.6; }
+@keyframes cursor-blink {
+  0%,45%  { opacity:1; }
+  50%,95% { opacity:0; }
+  100%    { opacity:1; }
+}
+@keyframes phosphor-glow {
+  0%,100% { opacity:0.8; }
   50%     { opacity:1;   }
 }
-@keyframes shadow-breathe {
-  0%,100% { opacity:0.8; transform:scaleX(1);   }
-  50%     { opacity:0.55; transform:scaleX(0.88); }
+@keyframes screen-ambient {
+  0%,100% { opacity:0.35; }
+  50%     { opacity:0.65; }
+}
+@keyframes title-fade {
+  0%   { opacity:0; transform:translateY(-4px); }
+  100% { opacity:1; transform:translateY(0); }
 }
 @keyframes fan-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes vent-zoom {
+  0%   { transform: scale(1)   translateZ(0); filter: brightness(1);    }
+  65%  { transform: scale(4.5) translateZ(0); filter: brightness(0.35); }
+  100% { transform: scale(7)   translateZ(0); filter: brightness(0);    }
+}
+@keyframes steam-wisp {
+  0%   { transform: translateY(0px)   translateX(0px);   opacity: 0.35; }
+  20%  { transform: translateY(-11px) translateX(3px);   opacity: 0.42; }
+  40%  { transform: translateY(-23px) translateX(-2px);  opacity: 0.35; }
+  60%  { transform: translateY(-35px) translateX(2.5px); opacity: 0.20; }
+  80%  { transform: translateY(-46px) translateX(-1px);  opacity: 0.08; }
+  100% { transform: translateY(-56px) translateX(1px);   opacity: 0;    }
+}
+@keyframes vent-fade-black {
+  0%   { opacity: 0; }
+  35%  { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes phone-ring {
+  0%,100% { transform: rotate(0deg); }
+  10%     { transform: rotate(-8deg); }
+  20%     { transform: rotate(8deg); }
+  30%     { transform: rotate(-6deg); }
+  40%     { transform: rotate(6deg); }
+  50%     { transform: rotate(-4deg); }
+  60%     { transform: rotate(4deg); }
+  70%     { transform: rotate(0deg); }
 }
 `
 
-const W = 320, H = 180
-const BL  = { x:42,  y:36  }
-const BR  = { x:278, y:36  }
-const BLb = { x:42,  y:148 }
-const BRb = { x:278, y:148 }
+// ── Image dimensions (1402 × 1122) ─────────────────────────────────────────────
+const IMG_W = 1402
+const IMG_H = 1122
 
-function poly(pts) { return pts.map(([x,y])=>`${x},${y}`).join(' ') }
 
-// ── Tiny seeded LCG — deterministic noise for brick layout ───────────────────
-function makeLCG(seed) {
-  let s = seed >>> 0
-  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xffffffff }
-}
+// ── CRT screen glass bounds — pixel-sampled from RB.png ───────────────────────
+// Left edge: x≈633, right: x≈767 (w=134). Top: y≈555, bottom: y≈633 (h=78).
+// Trimmed to stay well inside the glass — avoids bezel overlap top/bottom.
+const SCR = { x: 632, y: 550, w: 136, h: 98 }
 
-// ── Procedural pixel-art stone-block back wall ───────────────────────────────
-function BackWall({ x, y, w, h }) {
-  const rng = makeLCG(7331)
+// ── Fan overlay — position & speed ───────────────────────────────────────────
+// FAN_CX/CY: center of the blade area in SVG image coordinates
+// FAN_R:     spinning image half-size (controls visual scale of blades)
+// FAN_SPEED: CSS animation duration — lower = faster (e.g. '4s', '8s')
+// To swap the fan image: change the fanImg import at the top of this file
+const FAN_CX    = 1046   // SVG x center of fan (pixel-sampled from RB.png)
+const FAN_CY    = 275    // SVG y center of fan
+const FAN_R     = 48     // blade radius in SVG units (housing ≈52 so blades fit inside)
+const FAN_SPEED = '5s'   // full rotation duration
 
-  // Block dimensions (SVG units — 1 unit = ~4 screen px at 1280 wide)
-  const BW = 28, BH = 14, GAP = 1
+// ── About Me book — position ──────────────────────────────────────────────────
+// Sits on the RIGHT side of the desk — larger and clearly readable
+// To reposition: adjust BOOK_X / BOOK_Y / BOOK_W / BOOK_H
+// To swap the image: change the amBookImg import at the top of this file
+const BOOK_X = 784    // SVG x (left edge of book) — far right of desk
+const BOOK_Y = 670    // SVG y (top edge of book) — sits on desk surface
+const BOOK_W = 173    // SVG width  — noticeably larger for readability
+const BOOK_H = 85     // SVG height
 
-  const bricks   = []
-  const details  = []   // cracks, highlights, dark patches
-  const drips    = []
+// ── Boxes — bottom-left corner of room, next to desk ─────────────────────────
+const BOXES_X = 0     // SVG x (left edge)
+const BOXES_Y = 590   // SVG y (top edge) — bottom sits on floor
+const BOXES_W = 520   // SVG width
+const BOXES_H = 500   // SVG height
 
-  const rows = Math.ceil(h / (BH + GAP)) + 1
-  const cols = Math.ceil(w / (BW + GAP)) + 2
+// ── Table corner overlay — sits in front of safe/boxes ────────────────────────
+// 🔧 Adjust TABLE_X/Y/W/H to reposition; image imported as tableOverlayImg
+const TABLE_X = 448           // SVG x offset
+const TABLE_Y = 400           // SVG y offset
+const TABLE_W = IMG_W - 510   // SVG width  (892)
+const TABLE_H = IMG_H - 510   // SVG height (612)
 
-  for (let row = 0; row < rows; row++) {
-    const stagger = row % 2 === 1 ? (BW + GAP) / 2 : 0
+// ── SafeWeb — right side of room, against the far wall ────────────────────────
+// 🔧 Adjust SAFEWEB_X/Y/W/H to reposition; image imported as safeWebImg
+const SAFEWEB_X = 813   // SVG x — right wall area
+const SAFEWEB_Y = 485   // SVG y — sits on floor
+const SAFEWEB_W = 560   // SVG width
+const SAFEWEB_H = 540   // SVG height
 
-    for (let col = 0; col < cols; col++) {
-      const bx = x + col * (BW + GAP) - stagger
-      const by = y + row * (BH + GAP)
+// ── Contact phone — position on LEFT side of desk ─────────────────────────────
+// 🔧 To reposition: adjust PHONE_X / PHONE_Y / PHONE_W / PHONE_H
+// 🔧 To swap image: change the contactPhoneImg import at the top of this file
+const PHONE_X  = 452   // SVG x (left edge) — left desk area
+const PHONE_Y  = 640   // SVG y — so bottom (660+70=730) sits on desk surface
+const PHONE_W  = 160   // SVG width
+const PHONE_H  = 140   // SVG height
 
-      // Clip to wall bounds
-      const cx = Math.max(bx, x),       cy = Math.max(by, y)
-      const cx2= Math.min(bx+BW, x+w),  cy2= Math.min(by+BH, y+h)
-      const cw = cx2-cx,                 ch = cy2-cy
-      if (cw < 1 || ch < 1) continue
-
-      // Slight per-brick shade variation
-      const v   = rng()
-      const bri = 28 + Math.round(v * 10)  // 28–38
-      const key = `${row}-${col}`
-
-      bricks.push(
-        <rect key={`bk-${key}`} x={cx} y={cy} width={cw} height={ch}
-          fill={`rgb(${bri},${bri+3},${bri-6})`}/>
-      )
-
-      // Top-edge highlight (simulates light catch on stone)
-      details.push(
-        <rect key={`ht-${key}`} x={cx} y={cy} width={cw} height={1}
-          fill={`rgba(90,90,60,0.35)`}/>
-      )
-      // Left-edge subtle highlight
-      details.push(
-        <rect key={`hl-${key}`} x={cx} y={cy} width={1} height={ch}
-          fill={`rgba(80,80,52,0.2)`}/>
-      )
-
-      // Cracks on ~40% of fully visible bricks
-      if (rng() < 0.40 && cw >= BW * 0.6 && ch >= BH * 0.6) {
-        const n = rng() > 0.6 ? 2 : 1   // 1 or 2 crack lines
-        for (let ci = 0; ci < n; ci++) {
-          const sx = cx + 2 + rng() * (cw - 4)
-          const sy = cy + rng() * ch * 0.35
-          // Jagged crack: 3-point path
-          const mx = sx + (rng()-0.5)*4
-          const my = cy + ch * (0.35 + rng()*0.3)
-          const ex = sx + (rng()-0.5)*6
-          const ey = cy + ch * (0.72 + rng()*0.28)
-          const bright = rng() > 0.4   // lighter = exposed stone, darker = shadow crack
-
-          details.push(
-            <path key={`cr-${key}-${ci}`}
-              d={`M${sx},${sy} L${mx},${my} L${ex},${ey}`}
-              stroke={bright ? '#a09060' : '#181408'}
-              strokeWidth={bright ? '0.6' : '0.5'}
-              fill="none" opacity={bright ? 0.75 : 0.85}/>
-          )
-          // Paired shadow line next to light crack
-          if (bright) details.push(
-            <path key={`cs-${key}-${ci}`}
-              d={`M${sx+1},${sy} L${mx+1},${my} L${ex+1},${ey}`}
-              stroke="#0e0c06" strokeWidth="0.5" fill="none" opacity="0.6"/>
-          )
-        }
-      }
-
-      // Rust / blood drips from bottom mortar joint (~28%)
-      if (rng() < 0.28 && cy2 < y + h - 2) {
-        const dx   = cx + 3 + rng() * (cw - 6)
-        const dlen = 2 + rng() * 12
-        const wide = rng() > 0.6
-        drips.push(
-          <line key={`dp-${key}`}
-            x1={dx} y1={cy2+GAP}
-            x2={dx + (wide ? (rng()-0.5)*1.5 : 0)} y2={cy2+GAP+dlen}
-            stroke="#3c1c08" strokeWidth={wide ? 1 : 0.5} opacity="0.72"/>
-        )
-        // Widen drip near bottom (pooling effect)
-        if (dlen > 6) drips.push(
-          <ellipse key={`dl-${key}`}
-            cx={dx} cy={cy2+GAP+dlen}
-            rx={wide ? 1.5 : 0.8} ry={0.6}
-            fill="#2a1006" opacity="0.55"/>
-        )
-      }
-    }
-  }
-
-  return (
-    <g>
-      {/* Mortar base */}
-      <rect x={x} y={y} width={w} height={h} fill="#141612"/>
-      {bricks}
-      {details}
-      {drips}
-      {/* Subtle overall grime multiply overlay */}
-      <rect x={x} y={y} width={w} height={h}
-        fill="none"
-        style={{
-          background:'transparent',
-          filter:'url(#f-grime)',
-        }}/>
-    </g>
-  )
-}
-
-// ── Pipes (upper-left of back wall, like the reference) ──────────────────────
-function Pipes({ x, y }) {
-  // x,y = back-wall top-left
-  const BODY  = '#3a3018'
-  const HIGH  = '#544428'
-  const DARK  = '#1e1810'
-  const JOINT = '#2a2212'
-
-  return (
-    <g>
-      {/* Horizontal pipe (near ceiling of back wall) */}
-      <rect x={x}    y={y+5} width={64} height={4} fill={DARK}/>   {/* shadow */}
-      <rect x={x}    y={y+4} width={64} height={4} fill={BODY}/>
-      <rect x={x}    y={y+4} width={64} height={1} fill={HIGH}/>   {/* top highlight */}
-
-      {/* Second horizontal pipe below */}
-      <rect x={x}    y={y+14} width={46} height={3} fill={DARK}/>
-      <rect x={x}    y={y+13} width={46} height={3} fill={BODY}/>
-      <rect x={x}    y={y+13} width={46} height={1} fill={HIGH}/>
-
-      {/* Vertical pipe dropping from first horizontal */}
-      <rect x={x+18} y={y+4}  width={4} height={55} fill={DARK}/>
-      <rect x={x+17} y={y+4}  width={4} height={55} fill={BODY}/>
-      <rect x={x+17} y={y+4}  width={1} height={55} fill={HIGH}/>
-
-      {/* Vertical pipe from second horizontal (shorter) */}
-      <rect x={x+38} y={y+13} width={3} height={22} fill={DARK}/>
-      <rect x={x+37} y={y+13} width={3} height={22} fill={BODY}/>
-      <rect x={x+37} y={y+13} width={1} height={22} fill={HIGH}/>
-
-      {/* Pipe junction box where horizontal meets vertical */}
-      <rect x={x+14} y={y+11} width={10} height={8} fill={JOINT}/>
-      <rect x={x+14} y={y+11} width={10} height={8} fill="none"
-        stroke={HIGH} strokeWidth="0.5"/>
-      {/* Rivets */}
-      {[[x+15.5,y+12.5],[x+22.5,y+12.5],[x+15.5,y+17.5],[x+22.5,y+17.5]].map(([rx,ry],i)=>(
-        <circle key={i} cx={rx} cy={ry} r={0.8} fill={HIGH} opacity="0.7"/>
-      ))}
-
-      {/* Rust stains dripping from pipe joints */}
-      <line x1={x+19} y1={y+8} x2={x+19} y2={y+22}
-        stroke="#3c1c08" strokeWidth="0.8" opacity="0.6"/>
-      <line x1={x+39} y1={y+16} x2={x+39} y2={y+26}
-        stroke="#3c1c08" strokeWidth="0.5" opacity="0.5"/>
-    </g>
-  )
-}
-
-// ── Fan vent (upper-right, like the reference) ────────────────────────────────
-function FanVent({ cx, cy, r = 14 }) {
-  const outerR = r
-  const innerR = r * 0.22
-  const bladeR = r * 0.72
-
-  // 4 blades as path arcs
-  const blades = [0,1,2,3].map(i => {
-    const a  = (i / 4) * Math.PI * 2
-    const a2 = a + Math.PI * 0.55
-    const bx1 = cx + Math.cos(a)  * innerR * 1.5
-    const by1 = cy + Math.sin(a)  * innerR * 1.5
-    const bx2 = cx + Math.cos(a)  * bladeR
-    const by2 = cy + Math.sin(a)  * bladeR
-    const bx3 = cx + Math.cos(a2) * bladeR * 0.5
-    const by3 = cy + Math.sin(a2) * bladeR * 0.5
-    return `M${bx1},${by1} Q${bx2},${by2} ${bx3},${by3} Z`
-  })
-
-  return (
-    <g>
-      {/* Housing square */}
-      <rect x={cx-outerR-3} y={cy-outerR-3} width={(outerR+3)*2} height={(outerR+3)*2}
-        fill="#181610" stroke="#26221a" strokeWidth="1"/>
-      {/* Mounting screws */}
-      {[[-1,-1],[1,-1],[-1,1],[1,1]].map(([sx,sy],i)=>(
-        <circle key={i}
-          cx={cx+(outerR+1)*sx*0.85} cy={cy+(outerR+1)*sy*0.85}
-          r={1.2} fill="#141210" stroke="#302a1c" strokeWidth="0.5"/>
-      ))}
-      {/* Fan ring */}
-      <circle cx={cx} cy={cy} r={outerR}
-        fill="#141210" stroke="#222018" strokeWidth="1"/>
-      <circle cx={cx} cy={cy} r={outerR-1}
-        fill="none" stroke="#1e1c14" strokeWidth="0.5"/>
-      {/* Blades */}
-      {blades.map((d,i)=>(
-        <path key={i} d={d} fill="#242018" stroke="#181410" strokeWidth="0.4"/>
-      ))}
-      {/* Centre hub */}
-      <circle cx={cx} cy={cy} r={innerR*1.4} fill="#1e1c12" stroke="#2e2a1a" strokeWidth="0.5"/>
-      <circle cx={cx} cy={cy} r={innerR*0.6} fill="#2a2618"/>
-      {/* Rust drip from housing bottom */}
-      <line x1={cx} y1={cy+outerR+3} x2={cx} y2={cy+outerR+9}
-        stroke="#3c1c08" strokeWidth="0.8" opacity="0.55"/>
-    </g>
-  )
-}
-
-// ── SVG gradient/filter defs ──────────────────────────────────────────────────
+// ── SVG defs ──────────────────────────────────────────────────────────────────
 function Defs() {
   return (
     <defs>
-      {/* Side wall / ceiling texture filter */}
-      <filter id="f-side" x="-2%" y="-2%" width="104%" height="104%"
+      {/* Scanline tiling pattern */}
+      <pattern id="crt-scan" x="0" y="0" width={SCR.w} height="5"
+        patternUnits="userSpaceOnUse" patternTransform={`translate(${SCR.x},${SCR.y})`}>
+        <rect width={SCR.w} height="2" fill="rgba(0,0,0,0.16)"/>
+      </pattern>
+
+      {/* CRT corner vignette */}
+      <radialGradient id="crt-vig" cx="50%" cy="50%" r="62%"
+        gradientUnits="objectBoundingBox">
+        <stop offset="0%"   stopColor="black" stopOpacity="0"/>
+        <stop offset="48%"  stopColor="black" stopOpacity="0"/>
+        <stop offset="100%" stopColor="black" stopOpacity="0.72"/>
+      </radialGradient>
+
+      {/* Green phosphor base tint */}
+      <linearGradient id="phosphor" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stopColor="#020c03"/>
+        <stop offset="50%"  stopColor="#040e06"/>
+        <stop offset="100%" stopColor="#020c03"/>
+      </linearGradient>
+
+      {/* Hover green bloom */}
+      <radialGradient id="hover-bloom" cx="50%" cy="50%" r="65%"
+        gradientUnits="objectBoundingBox">
+        <stop offset="0%"   stopColor="#00ff55" stopOpacity="0.07"/>
+        <stop offset="55%"  stopColor="#00cc44" stopOpacity="0.03"/>
+        <stop offset="100%" stopColor="transparent" stopOpacity="0"/>
+      </radialGradient>
+
+      {/* Phosphor glow filter — idle (softer) */}
+      <filter id="idle-glow" x="-20%" y="-20%" width="140%" height="140%"
         colorInterpolationFilters="sRGB">
-        <feTurbulence type="fractalNoise" baseFrequency="0.3 0.24"
-          numOctaves="4" seed="8" result="surf"/>
-        <feComponentTransfer in="surf" result="qS">
-          <feFuncR type="discrete" tableValues="0.02 0.04 0.065 0.09 0.065 0.04 0.02"/>
-          <feFuncG type="discrete" tableValues="0.017 0.035 0.057 0.079 0.057 0.035 0.017"/>
-          <feFuncB type="discrete" tableValues="0.006 0.013 0.021 0.03 0.021 0.013 0.006"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+        <feColorMatrix in="blur" type="matrix"
+          values="0 0 0 0 0   0 1 0 0 0.45   0 0 0 0 0   0 0 0 0.3 0"
+          result="glow"/>
+        <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+
+      {/* Hover bloom — cinematic, not overpowering */}
+      <filter id="hover-glow" x="-22%" y="-22%" width="144%" height="144%"
+        colorInterpolationFilters="sRGB">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur"/>
+        <feColorMatrix in="blur" type="matrix"
+          values="0 0 0 0 0   0 1 0 0 0.55   0 0 0 0 0   0 0 0 0.5 0"
+          result="glow"/>
+        <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+
+      {/* Subtle chromatic aberration on hover text */}
+      <filter id="chroma" x="-5%" y="-5%" width="110%" height="110%">
+        <feOffset in="SourceGraphic" dx="-1" dy="0" result="r"/>
+        <feOffset in="SourceGraphic" dx="1"  dy="0" result="b"/>
+        <feColorMatrix in="r" type="matrix"
+          values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="red"/>
+        <feColorMatrix in="b" type="matrix"
+          values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="blue"/>
+        <feMerge>
+          <feMergeNode in="red"/>
+          <feMergeNode in="blue"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+
+      {/* Clip screen content to rounded CRT corners */}
+      <clipPath id="scr-clip">
+        <rect x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h} rx="5" ry="4"/>
+      </clipPath>
+
+      {/* Mug hover — warm amber/orange glow matching the phone */}
+      <filter id="mug-glow" x="-40%" y="-40%" width="180%" height="180%"
+        colorInterpolationFilters="sRGB">
+        <feComponentTransfer in="SourceGraphic" result="bright">
+          <feFuncR type="linear" slope="1.40"/>
+          <feFuncG type="linear" slope="1.20"/>
+          <feFuncB type="linear" slope="0.90"/>
         </feComponentTransfer>
-        <feTurbulence type="fractalNoise" baseFrequency="0.78 0.58"
-          numOctaves="2" seed="5" result="vein"/>
-        <feColorMatrix in="vein" type="matrix"
-          values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  7 7 7 0 -5.2" result="vm"/>
-        <feFlood floodColor="#010100" floodOpacity="0.92" result="cc"/>
-        <feComposite in="cc" in2="vm" operator="in" result="cracks"/>
-        <feBlend in="SourceGraphic" in2="qS" mode="multiply" result="s1"/>
-        <feMerge><feMergeNode in="s1"/><feMergeNode in="cracks"/></feMerge>
+        <feGaussianBlur in="bright" stdDeviation="9" result="halo"/>
+        <feColorMatrix in="halo" type="matrix"
+          values="0 0 0 0 0.90  0 0 0 0 0.50  0 0 0 0 0.00  0 0 0 0.50 0"
+          result="amberHalo"/>
+        <feGaussianBlur in="bright" stdDeviation="2.5" result="innerBlur"/>
+        <feColorMatrix in="innerBlur" type="matrix"
+          values="0 0 0 0 1.00  0 0 0 0 0.65  0 0 0 0 0.05  0 0 0 0.60 0"
+          result="innerGlow"/>
+        <feMerge>
+          <feMergeNode in="amberHalo"/>
+          <feMergeNode in="innerGlow"/>
+          <feMergeNode in="bright"/>
+        </feMerge>
       </filter>
 
-      {/* Floor broken-tile filter */}
-      <filter id="f-floor" x="-2%" y="-2%" width="104%" height="104%"
+      {/* Book idle — always-on soft purple shimmer */}
+      <filter id="book-idle" x="-35%" y="-35%" width="170%" height="170%"
         colorInterpolationFilters="sRGB">
-        <feTurbulence type="fractalNoise" baseFrequency="0.38 0.28"
-          numOctaves="2" seed="14" result="tile"/>
-        <feComponentTransfer in="tile" result="qT">
-          <feFuncR type="discrete" tableValues="0.028 0.055 0.085 0.055 0.028"/>
-          <feFuncG type="discrete" tableValues="0.024 0.048 0.074 0.048 0.024"/>
-          <feFuncB type="discrete" tableValues="0.009 0.018 0.028 0.018 0.009"/>
+        <feComponentTransfer in="SourceGraphic" result="bright">
+          <feFuncR type="linear" slope="1.15"/>
+          <feFuncG type="linear" slope="1.05"/>
+          <feFuncB type="linear" slope="1.25"/>
         </feComponentTransfer>
-        <feTurbulence type="fractalNoise" baseFrequency="0.68 0.42"
-          numOctaves="1" seed="19" result="crackN"/>
-        <feColorMatrix in="crackN" type="matrix"
-          values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  8 8 8 0 -6.2" result="cm"/>
-        <feFlood floodColor="#010100" floodOpacity="0.95" result="cc"/>
-        <feComposite in="cc" in2="cm" operator="in" result="cracks"/>
-        <feBlend in="SourceGraphic" in2="qT" mode="multiply" result="s1"/>
-        <feMerge><feMergeNode in="s1"/><feMergeNode in="cracks"/></feMerge>
+        <feGaussianBlur in="bright" stdDeviation="5" result="halo"/>
+        <feColorMatrix in="halo" type="matrix"
+          values="0 0 0 0 0.30  0 0 0 0 0.05  0 0 0 0 0.65  0 0 0 0.45 0"
+          result="idleHalo"/>
+        <feMerge>
+          <feMergeNode in="idleHalo"/>
+          <feMergeNode in="bright"/>
+        </feMerge>
       </filter>
 
-      {/* Very subtle grime multiply for back wall overlay */}
-      <filter id="f-grime" x="0%" y="0%" width="100%" height="100%"
+      {/* Book hover — bright glow that makes cover text shine */}
+      <filter id="book-glow" x="-40%" y="-40%" width="180%" height="180%"
         colorInterpolationFilters="sRGB">
-        <feTurbulence type="fractalNoise" baseFrequency="0.08 0.06"
-          numOctaves="3" seed="22" result="g"/>
-        <feColorMatrix in="g" type="matrix"
-          values="0 0 0 0 0.03  0 0 0 0 0.025  0 0 0 0 0.01  0 0 0 6 -4"
-          result="gm"/>
-        <feFlood floodColor="#030201" floodOpacity="0.55" result="gc"/>
-        <feComposite in="gc" in2="gm" operator="in" result="gr"/>
-        <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="gr"/></feMerge>
+        {/* Brightness pass — lifts the whole image so text pops */}
+        <feComponentTransfer in="SourceGraphic" result="bright">
+          <feFuncR type="linear" slope="1.45"/>
+          <feFuncG type="linear" slope="1.25"/>
+          <feFuncB type="linear" slope="1.70"/>
+        </feComponentTransfer>
+        {/* Wide soft halo */}
+        <feGaussianBlur in="bright" stdDeviation="10" result="halo"/>
+        <feColorMatrix in="halo" type="matrix"
+          values="0 0 0 0 0.50  0 0 0 0 0.12  0 0 0 0 1.00  0 0 0 0.85 0"
+          result="purpleHalo"/>
+        {/* Tight inner glow — hugs the text/edges */}
+        <feGaussianBlur in="bright" stdDeviation="3" result="innerBlur"/>
+        <feColorMatrix in="innerBlur" type="matrix"
+          values="0 0 0 0 0.85  0 0 0 0 0.60  0 0 0 0 1.00  0 0 0 1.00 0"
+          result="innerGlow"/>
+        <feMerge>
+          <feMergeNode in="purpleHalo"/>
+          <feMergeNode in="innerGlow"/>
+          <feMergeNode in="bright"/>
+        </feMerge>
       </filter>
 
-      {/* ── Light gradients ─────────────────────────────────────────────────── */}
-      <radialGradient id="glow-wide" gradientUnits="userSpaceOnUse"
-        cx="160" cy="90" r="170">
-        <stop offset="0%"   stopColor="#d4a818" stopOpacity="0.72"/>
-        <stop offset="16%"  stopColor="#a07812" stopOpacity="0.44"/>
-        <stop offset="40%"  stopColor="#4a3406" stopOpacity="0.2"/>
-        <stop offset="70%"  stopColor="#0e0a02" stopOpacity="0.06"/>
-        <stop offset="100%" stopColor="#000000" stopOpacity="0"/>
-      </radialGradient>
+      {/* Phone hover — warm amber glow */}
+      <filter id="phone-glow" x="-30%" y="-30%" width="160%" height="160%"
+        colorInterpolationFilters="sRGB">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+        <feColorMatrix in="blur" type="matrix"
+          values="0 0 0 0 0.8  0 0 0 0 0.45  0 0 0 0 0.0  0 0 0 0.5 0"
+          result="glow"/>
+        <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
 
-      <radialGradient id="glow-halo" gradientUnits="userSpaceOnUse"
-        cx="160" cy="84" r="72">
-        <stop offset="0%"   stopColor="#ecca28" stopOpacity="0.65"/>
-        <stop offset="30%"  stopColor="#a07c1a" stopOpacity="0.3"/>
-        <stop offset="100%" stopColor="#000000" stopOpacity="0"/>
-      </radialGradient>
+      {/* Steam softener */}
+      <filter id="steam-blur" x="-60%" y="-20%" width="220%" height="140%">
+        <feGaussianBlur stdDeviation="1.2"/>
+      </filter>
 
-      <radialGradient id="glow-desk" gradientUnits="userSpaceOnUse"
-        cx="160" cy="126" r="68">
-        <stop offset="0%"   stopColor="#6aaa1c" stopOpacity="0.28"/>
-        <stop offset="50%"  stopColor="#2a4408" stopOpacity="0.1"/>
-        <stop offset="100%" stopColor="#000000" stopOpacity="0"/>
-      </radialGradient>
-
-      <radialGradient id="fog" gradientUnits="userSpaceOnUse"
-        cx="160" cy="88" r="130">
-        <stop offset="0%"   stopColor="#3c2e06" stopOpacity="0.3"/>
-        <stop offset="35%"  stopColor="#1c1604" stopOpacity="0.15"/>
-        <stop offset="100%" stopColor="#000000" stopOpacity="0"/>
-      </radialGradient>
-
-      <radialGradient id="vig" gradientUnits="objectBoundingBox"
-        cx="50%" cy="50%" r="68%">
-        <stop offset="0%"   stopColor="#000" stopOpacity="0"/>
-        <stop offset="44%"  stopColor="#000" stopOpacity="0.08"/>
-        <stop offset="68%"  stopColor="#000" stopOpacity="0.7"/>
-        <stop offset="100%" stopColor="#000" stopOpacity="0.98"/>
-      </radialGradient>
+      {/* Vent hover — very faint cold-white shimmer, barely visible */}
+      <filter id="vent-hover" x="-40%" y="-40%" width="180%" height="180%"
+        colorInterpolationFilters="sRGB">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="blur"/>
+        <feColorMatrix in="blur" type="matrix"
+          values="0.6 0 0 0 0.1  0.6 0 0 0 0.1  0.6 0 0 0 0.15  0 0 0 0.28 0"
+          result="glow"/>
+        <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
     </defs>
   )
 }
 
-// ── Side-wall vent grate ──────────────────────────────────────────────────────
-function Vent({ x, y, w, h, slots = 4 }) {
-  const sh = (h - 4) / slots
-  return (
-    <g>
-      <rect x={x} y={y} width={w} height={h}
-        fill="#0c0b07" stroke="#1a1912" strokeWidth="1"/>
-      <rect x={x+1} y={y+1} width={w-2} height={h-2}
-        fill="none" stroke="#222018" strokeWidth="1"/>
-      {Array.from({length:slots}).map((_,i)=>(
-        <rect key={i} x={x+2} y={y+2+i*sh} width={w-4}
-          height={Math.max(1,sh-2)} fill="#060504" stroke="#111009" strokeWidth="0.5"/>
-      ))}
-      <rect x={x+1} y={y+h} width={w-2} height={3}
-        fill="#1a0804" opacity="0.35"/>
-    </g>
-  )
-}
-
 // ── Main Room ─────────────────────────────────────────────────────────────────
-export default function Room({ onComputerClick, scale = 1, settings }) {
-  const showVents = settings?.decorations?.airVent?.show !== false
+export default function Room({ onComputerClick, onAboutClick, onContactClick, onVentClick, settings, isActive }) {
+  const [hovered,        setHovered]        = useState(false)
+  const [aboutHovered,   setAboutHovered]   = useState(false)
+  const [contactHovered, setContactHovered] = useState(false)
+  const [safeHovered,    setSafeHovered]    = useState(false)
+  const [safeOpen,       setSafeOpen]       = useState(false)
+  const [safeUnlocked,   setSafeUnlocked]   = useState(false)
+  const [flickerOp,      setFlickerOp]      = useState(1)
+  const [ventHovered,    setVentHovered]    = useState(false)
+  const [ventZooming,    setVentZooming]    = useState(false)
+  const timerRef    = useRef(null)
+  const ambientRef  = useRef(null)
+  const ventTimerRef = useRef(null)
+
+  // Reset zoom state when room becomes active again (returning from vent)
+  useEffect(() => {
+    if (isActive) setVentZooming(false)
+  }, [isActive])
+
+  // Random brightness dip — simulates failing CRT tube
+  useEffect(() => {
+    const tick = () => {
+      setFlickerOp(0.70 + Math.random() * 0.30)
+      setTimeout(() => setFlickerOp(1), 55 + Math.random() * 90)
+      timerRef.current = setTimeout(tick, 2000 + Math.random() * 6000)
+    }
+    timerRef.current = setTimeout(tick, 1400 + Math.random() * 3000)
+    return () => clearTimeout(timerRef.current)
+  }, [])
+
+  // ── Fade ambient volume when switching views ──────────────────────────────
+  useEffect(() => {
+    const audio = ambientRef.current
+    if (!audio) return
+    const target = isActive ? AMBIENT_VOLUME : 0.08
+    const step = () => {
+      const diff = target - audio.volume
+      if (Math.abs(diff) < 0.005) { audio.volume = target; return }
+      audio.volume = Math.max(0, Math.min(1, audio.volume + diff * 0.12))
+      setTimeout(step, 30)
+    }
+    step()
+  }, [isActive])
+
+  // ── Ambient fridge hum ────────────────────────────────────────────────────
+  // React StrictMode fires the effect twice (mount → cleanup → mount).
+  // The pattern here lets the cleanup fully destroy the first instance so
+  // the second (real) mount creates a fresh one that actually plays.
+  useEffect(() => {
+    const audio = new Audio(fridgeAmbient)
+    audio.loop   = true
+    audio.volume = 0
+    ambientRef.current = audio
+
+    const fadeIn = () => {
+      let v = 0
+      const step = () => {
+        v = Math.min(v + 0.01, AMBIENT_VOLUME)
+        audio.volume = v
+        if (v < AMBIENT_VOLUME) setTimeout(step, 40)
+      }
+      step()
+    }
+
+    const tryPlay = () => { audio.play().then(fadeIn).catch(() => {}) }
+
+    // Try immediate autoplay; fall back to first user gesture
+    audio.play().then(fadeIn).catch(() => {
+      document.addEventListener('click',      tryPlay, { once: true })
+      document.addEventListener('touchstart', tryPlay, { once: true })
+      document.addEventListener('keydown',    tryPlay, { once: true })
+    })
+
+    return () => {
+      document.removeEventListener('click',      tryPlay)
+      document.removeEventListener('touchstart', tryPlay)
+      document.removeEventListener('keydown',    tryPlay)
+      audio.pause()
+      audio.src = ''
+      ambientRef.current = null
+    }
+  }, [])
+
+  // Clean up vent timer on unmount
+  useEffect(() => () => clearTimeout(ventTimerRef.current), [])
+
+  const handleVentClick = useCallback(() => {
+    if (ventZooming) return
+    setVentZooming(true)
+    ventTimerRef.current = setTimeout(() => {
+      onVentClick?.()
+      // Reset happens when isActive returns to true
+    }, 820)
+  }, [ventZooming, onVentClick])
+
+  const cx = SCR.x + SCR.w / 2
+  const cy = SCR.y + SCR.h / 2
+
+  // Font sizes relative to screen width
+  const fs  = Math.round(SCR.w * 0.073)   // ~10 — terminal lines
+  const fsB = Math.round(SCR.w * 0.095)   // ~13 — CLICK TO ENTER
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'#030201', overflow:'hidden' }}>
+    <div style={{ position:'fixed', inset:0, background:'#09070400', overflow:'hidden' }}>
       <style>{ANIM}</style>
 
+      {/* ── Page title ──────────────────────────────────────────────────────── */}
+      <div style={{
+        position:'absolute', top:0, left:0, right:0, zIndex:10,
+        display:'flex', justifyContent:'center',
+        paddingTop:'2.6%',
+        pointerEvents:'none',
+        animation:'title-fade 1.8s ease-out both',
+        animationDelay:'0.4s',
+      }}>
+        <span style={{
+          fontFamily:"'Inter', -apple-system, sans-serif",
+          fontWeight:600,
+          fontSize:'clamp(16px, 1.8vw, 26px)',
+          color:'#ffffff',
+          letterSpacing:'0.32em',
+          textTransform:'uppercase',
+          textShadow:'0 2px 14px rgba(0,0,0,1), 0 0 40px rgba(0,0,0,0.9)',
+          background:'rgba(0,0,0,0.42)',
+          padding:'8px 28px',
+        }}>Joe Calvey Portfolio</span>
+      </div>
+
+      {/* ── Gentle camera breathe / vent zoom ───────────────────────────────── */}
+      {/* transform-origin for vent-zoom aims at fan position (≈74% x, 16% y)  */}
       <div style={{
         position:'absolute', inset:'-1.5%',
-        transformOrigin:'50% 58%',
-        animation:'room-breathe 9s ease-in-out infinite',
+        transformOrigin: ventZooming ? '74% 16%' : '50% 52%',
+        animation: ventZooming
+          ? 'vent-zoom 0.85s cubic-bezier(0.4, 0, 1, 1) both'
+          : 'room-breathe 9s ease-in-out infinite',
       }}>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice"
-          style={{
-            position:'absolute', inset:0, width:'100%', height:'100%',
-            imageRendering:'pixelated',
-          }}
+        <svg
+          viewBox={`0 0 ${IMG_W} ${IMG_H}`}
+          preserveAspectRatio="xMidYMid slice"
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%' }}
         >
           <Defs/>
 
-          {/* CEILING */}
-          <polygon points={poly([[0,0],[W,0],[BR.x,BL.y],[BL.x,BL.y]])}
-            fill="#0d0b06" filter="url(#f-side)"/>
+          {/* ── Background room image ─────────────────────────────────────────── */}
+          <image href={roomBg} x={0} y={0} width={IMG_W} height={IMG_H}/>
 
-          {/* LEFT WALL */}
-          <polygon points={poly([[0,0],[BL.x,BL.y],[BLb.x,BLb.y],[0,H]])}
-            fill="#0f0d07" filter="url(#f-side)"/>
+          {/* ── SafeWeb — right wall, rendered early so desk/items sit in front ── */}
+          {/* 🔧 Position: SAFEWEB_X / SAFEWEB_Y / SAFEWEB_W / SAFEWEB_H above    */}
+          <ellipse
+            cx={SAFEWEB_X + SAFEWEB_W * 0.5} cy={SAFEWEB_Y + SAFEWEB_H + 8}
+            rx={SAFEWEB_W * 0.38} ry={12}
+            fill="rgba(0,0,0,0.38)"
+            style={{ pointerEvents: 'none' }}
+          />
+          <clipPath id="safeweb-clip">
+            <rect x={SAFEWEB_X + 2} y={SAFEWEB_Y + 2} width={SAFEWEB_W - 4} height={SAFEWEB_H - 4}/>
+          </clipPath>
+          <image
+            href={safeUnlocked ? safeOpenedImg : safeWebImg}
+            x={SAFEWEB_X} y={SAFEWEB_Y}
+            width={SAFEWEB_W} height={SAFEWEB_H}
+            preserveAspectRatio="xMidYMid meet"
+            opacity={0.82}
+            clipPath="url(#safeweb-clip)"
+            style={{ pointerEvents: 'none', filter: 'brightness(0.72)', transition: 'opacity 0.4s ease' }}
+          />
 
-          {/* RIGHT WALL */}
-          <polygon points={poly([[BR.x,BR.y],[W,0],[W,H],[BRb.x,BRb.y]])}
-            fill="#0f0d07" filter="url(#f-side)"/>
+          {/* ── Fan: dark cover hides original static blades ─────────────────── */}
+          {/* Covers only the blade area; the outer housing ring remains visible  */}
+          <circle
+            cx={FAN_CX} cy={FAN_CY} r={FAN_R - 3}
+            fill="#0c0b07"
+            style={{ pointerEvents:'none' }}
+          />
 
-          {/* FLOOR */}
-          <polygon points={poly([[BLb.x,BLb.y],[BRb.x,BRb.y],[W,H],[0,H]])}
-            fill="#100e07" filter="url(#f-floor)"/>
+          {/* ── Fan: spinning blade overlay ───────────────────────────────────── */}
+          {/* Speed: FAN_SPEED constant above · Image: fanImg import at top       */}
+          <image
+            href={fanImg}
+            x={FAN_CX - (FAN_R + 49)} y={FAN_CY - (FAN_R + 49)}
+            width={(FAN_R + 49) * 2} height={(FAN_R + 49) * 2}
+            filter={ventHovered && !ventZooming ? 'url(#vent-hover)' : undefined}
+            style={{
+              pointerEvents:'none',
+              animation:`fan-spin ${FAN_SPEED} linear infinite`,
+              transformBox:'fill-box',
+              transformOrigin:'center',
+              transition:'filter 0.3s ease',
+            }}
+          />
 
-          {/* ── BACK WALL: procedural stone blocks ──────────────────────── */}
-          <BackWall x={BL.x} y={BL.y} w={BR.x-BL.x} h={BLb.y-BL.y}/>
+          {/* ── Vent hit area — invisible, covers the housing ring ───────────── */}
+          {/* Does NOT affect fan spin; cursor hints subtly on hover             */}
+          <circle
+            cx={FAN_CX} cy={FAN_CY}
+            r={FAN_R + 14}
+            fill="transparent"
+            style={{ cursor: ventZooming ? 'default' : 'pointer' }}
+            onMouseEnter={() => setVentHovered(true)}
+            onMouseLeave={() => setVentHovered(false)}
+            onClick={handleVentClick}
+          />
 
-          {/* ── PIPES (upper-left of back wall) ────────────────────────── */}
-          <Pipes x={BL.x} y={BL.y}/>
+          {/* ── CRT screen overlay ────────────────────────────────────────────── */}
+          <g
+            style={{ cursor:'pointer' }}
+            onClick={onComputerClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            filter={hovered ? 'url(#hover-glow)' : 'url(#idle-glow)'}
+          >
+            {/* Screen content clipped to rounded rect */}
+            <g clipPath="url(#scr-clip)">
 
-          {/* ── FAN VENT (upper-right, matching reference) ─────────────── */}
-          {showVents && <FanVent cx={256} cy={56}/>}
+              {/* Dark CRT glass base */}
+              <rect
+                x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h}
+                fill={hovered ? '#050f07' : '#030c04'}
+                style={{ animation:'crt-flicker 11s ease-in-out infinite' }}
+              />
 
-          {/* ── SIDE WALL VENTS ────────────────────────────────────────── */}
-          {showVents && <>
-            <Vent x={2}   y={60} w={20} h={28} slots={4}/>
-            <Vent x={298} y={60} w={20} h={28} slots={4}/>
-            {/* Ceiling vent */}
-            <Vent x={143} y={3}  w={34} h={22} slots={5}/>
-          </>}
+              {/* Phosphor tint */}
+              <rect x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h}
+                fill="url(#phosphor)" opacity="0.55"
+                style={{ pointerEvents:'none' }}/>
 
-          {/* ── WALL SEAM LINES ────────────────────────────────────────── */}
-          <line x1={BL.x}  y1={BL.y}  x2={BLb.x} y2={BLb.y} stroke="#1e1c10" strokeWidth="1"/>
-          <line x1={BR.x}  y1={BR.y}  x2={BRb.x} y2={BRb.y} stroke="#1e1c10" strokeWidth="1"/>
-          <line x1={BL.x}  y1={BL.y}  x2={BR.x}  y2={BR.y}  stroke="#1e1c10" strokeWidth="1"/>
-          <line x1={BLb.x} y1={BLb.y} x2={BRb.x} y2={BRb.y} stroke="#1e1c10" strokeWidth="1"/>
+              {/* Scanlines */}
+              <rect x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h}
+                fill="url(#crt-scan)"
+                style={{ pointerEvents:'none' }}/>
 
-          {/* ── GLOW OVERLAYS ──────────────────────────────────────────── */}
-          <rect x={BL.x} y={BL.y} width={BR.x-BL.x} height={BLb.y-BL.y}
-            fill="url(#glow-halo)" style={{pointerEvents:'none'}}/>
-          <rect x={0} y={0} width={W} height={H}
-            fill="url(#glow-wide)" style={{pointerEvents:'none'}}/>
+              {/* CRT corner vignette */}
+              <rect x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h}
+                fill="url(#crt-vig)"
+                style={{ pointerEvents:'none' }}/>
 
-          {/* ── DESK ───────────────────────────────────────────────────── */}
-          <rect x={78} y={124} width={164} height={6} fill="#2c1e0b"/>
-          <rect x={78} y={129} width={164} height={2} fill="#160c04"/>
-          {[100,120,145,170,195,218].map(x=>(
-            <line key={x} x1={x} y1={124} x2={x} y2={130}
-              stroke="rgba(0,0,0,0.2)" strokeWidth="1"/>
-          ))}
-          <rect x={78} y={124} width={164} height={6}
-            fill="url(#glow-desk)" style={{pointerEvents:'none'}}/>
-          <rect x={84}  y={130} width={5} height={18} fill="#1e1208"/>
-          <rect x={231} y={130} width={5} height={18} fill="#1e1208"/>
+              {/* ── Idle: terminal prompt — fades out on hover ───────────────── */}
+              <g style={{ pointerEvents:'none', opacity: hovered ? 0 : 1, transition:'opacity 0.18s ease-out' }}>
+                <g opacity={flickerOp}>
+                  <text
+                    x={SCR.x + SCR.w * 0.08} y={SCR.y + SCR.h * 0.28}
+                    fontFamily="'Share Tech Mono', monospace"
+                    fontSize={fs} fill="#008828" opacity="0.50"
+                    style={{ filter:'drop-shadow(0 0 3px rgba(0,140,30,0.4))' }}>
+                    CALVEY OS v1.0
+                  </text>
+                  <text
+                    x={SCR.x + SCR.w * 0.08} y={SCR.y + SCR.h * 0.52}
+                    fontFamily="'Share Tech Mono', monospace"
+                    fontSize={fs} fill="#00bb44"
+                    style={{ filter:'drop-shadow(0 0 4px rgba(0,180,40,0.45))' }}>
+                    C:\PORTFOLIO&gt;
+                  </text>
+                  {/* Blinking cursor */}
+                  <text
+                    x={SCR.x + SCR.w * 0.08} y={SCR.y + SCR.h * 0.76}
+                    fontFamily="'Share Tech Mono', monospace"
+                    fontSize={fs} fill="#00cc44"
+                    style={{
+                      filter:'drop-shadow(-1px 0 rgba(255,0,40,0.25)) drop-shadow(1px 0 rgba(0,40,255,0.25)) drop-shadow(0 0 5px #00bb44)',
+                      animation:'phosphor-glow 3.2s ease-in-out infinite',
+                    }}>
+                    _
+                  </text>
+                  <text
+                    x={SCR.x + SCR.w * 0.08 + fs * 0.65}
+                    y={SCR.y + SCR.h * 0.76}
+                    fontFamily="'Share Tech Mono', monospace"
+                    fontSize={fs} fill="#00cc44"
+                    style={{
+                      filter:'drop-shadow(0 0 4px #00bb44)',
+                      animation:'cursor-blink 1.1s step-end infinite',
+                    }}>
+                    ▮
+                  </text>
+                </g>
+              </g>
 
-          {/* ── FLOOR GRIME ────────────────────────────────────────────── */}
-          <ellipse cx={110} cy={158} rx={14} ry={5} fill="#070503" opacity="0.55"/>
-          <ellipse cx={205} cy={163} rx={10} ry={4} fill="#070503" opacity="0.45"/>
-          <ellipse cx={155} cy={170} rx={18} ry={4} fill="#070503" opacity="0.35"/>
+              {/* ── Hover: "CLICK TO ENTER" — fades in on hover ─────────────── */}
+              <g style={{ pointerEvents:'none', opacity: hovered ? 1 : 0, transition:'opacity 0.14s ease-in' }}>
+                <text
+                  x={cx} y={cy - fsB * 0.55}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontFamily="'Press Start 2P', monospace"
+                  fontSize={fsB} fill="#00dd44"
+                  filter="url(#chroma)"
+                  style={{ animation:'phosphor-glow 2s ease-in-out infinite' }}
+                >CLICK</text>
+                <text
+                  x={cx} y={cy + fsB * 0.95}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontFamily="'Press Start 2P', monospace"
+                  fontSize={fsB} fill="#00dd44"
+                  filter="url(#chroma)"
+                  style={{ animation:'phosphor-glow 2s ease-in-out infinite' }}
+                >TO ENTER</text>
+                <rect x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h}
+                  fill="url(#hover-bloom)" style={{ pointerEvents:'none' }}/>
+              </g>
 
-          {/* ── FOG ────────────────────────────────────────────────────── */}
-          <rect x={0} y={0} width={W} height={H}
-            fill="url(#fog)" opacity="0.8" style={{pointerEvents:'none'}}/>
+              {/* Dust specs */}
+              {[
+                [SCR.x + SCR.w*0.14, SCR.y + SCR.h*0.19],
+                [SCR.x + SCR.w*0.71, SCR.y + SCR.h*0.54],
+                [SCR.x + SCR.w*0.43, SCR.y + SCR.h*0.81],
+                [SCR.x + SCR.w*0.87, SCR.y + SCR.h*0.32],
+              ].map(([px,py], i) => (
+                <rect key={i} x={px} y={py} width={1.5} height={1.5}
+                  fill="rgba(150,130,55,0.35)" style={{ pointerEvents:'none' }}/>
+              ))}
 
-          {/* ── VIGNETTE ───────────────────────────────────────────────── */}
-          <rect x={0} y={0} width={W} height={H}
-            fill="url(#vig)" style={{pointerEvents:'none'}}/>
+            </g>{/* end scr-clip */}
 
-          {/* ── FLOOR SHADOW UNDER DESK ────────────────────────────────── */}
-          <ellipse cx={160} cy={147} rx={60} ry={7}
-            fill="#000" opacity="0.75"
-            style={{animation:'shadow-breathe 4s ease-in-out infinite'}}/>
+            {/* Inner rim — dark edge following rounded screen corners */}
+            <rect
+              x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h}
+              rx="5" ry="4"
+              fill="none"
+              stroke="rgba(0,0,0,0.45)"
+              strokeWidth="2"
+              style={{ pointerEvents:'none' }}
+            />
+          </g>
+
+          {/* ── Ambient desk glow below monitor ──────────────────────────────── */}
+          <ellipse
+            cx={cx} cy={SCR.y + SCR.h + 36}
+            rx={SCR.w * 0.50} ry={24}
+            fill="rgba(0,165,35,0.05)"
+            style={{
+              pointerEvents:'none',
+              animation:'screen-ambient 7s ease-in-out infinite',
+            }}
+          />
+
+          {/* ── Boxes — bottom-left corner next to desk ──────────────────────── */}
+          {/* 🔧 Position: BOXES_X / BOXES_Y / BOXES_W / BOXES_H constants above  */}
+          <image
+            href={boxesImg}
+            x={BOXES_X} y={BOXES_Y}
+            width={BOXES_W} height={BOXES_H}
+            preserveAspectRatio="xMidYMid meet"
+            style={{ pointerEvents: 'none', filter: 'brightness(0.68)' }}
+          />
+
+          {/* ── Table corner overlay — sits in front of safe/boxes ──────────── */}
+          {/* Full room dimensions so it aligns pixel-perfectly with the background */}
+          <image
+            href={tableOverlayImg}
+            x={TABLE_X} y={TABLE_Y} width={TABLE_W} height={TABLE_H}
+            preserveAspectRatio="xMidYMid meet"
+            style={{ pointerEvents: 'none' }}
+          />
+
+          {/* ── About Me book — right side of desk ───────────────────────────── */}
+          {/* 🔧 Image: change amBookImg import · Position: BOOK_X/Y/W/H above  */}
+          <g
+            transform={`rotate(-1, ${BOOK_X + BOOK_W / 2}, ${BOOK_Y + BOOK_H / 2})`}
+            style={{ cursor:'pointer' }}
+            onClick={onAboutClick}
+            onMouseEnter={() => setAboutHovered(true)}
+            onMouseLeave={() => setAboutHovered(false)}
+          >
+            {/* Transparent hit rect — ensures the whole book area is clickable */}
+            <rect x={BOOK_X} y={BOOK_Y} width={BOOK_W} height={BOOK_H} fill="transparent" />
+            {/* Shadow — rendered before image so mug sits in front */}
+            <ellipse
+              cx={BOOK_X + BOOK_W * 0.5 + 2} cy={BOOK_Y + BOOK_H - 14}
+              rx={BOOK_W * 0.20 + 3} ry={4.5}
+              fill="rgba(0,0,0,0.50)"
+              style={{ pointerEvents:'none' }}
+            />
+            <ellipse
+              cx={BOOK_X + BOOK_W * 0.5 + 2} cy={BOOK_Y + BOOK_H - 15}
+              rx={BOOK_W * 0.12 + 3} ry={3}
+              fill="rgba(0,0,0,0.65)"
+              style={{ pointerEvents:'none' }}
+            />
+            {/* Steam — clipped so wisps only appear above the mug rim */}
+            <clipPath id="steam-clip">
+              <rect
+                x={BOOK_X + BOOK_W * 0.3}
+                y={BOOK_Y - 80}
+                width={BOOK_W * 0.6}
+                height={80 + BOOK_H * 0.155}
+              />
+            </clipPath>
+            <g clipPath="url(#steam-clip)" style={{ pointerEvents: 'none' }}>
+            {[
+              { dx:  0, delay: '0s',    swing:  4 },
+              { dx:  6, delay: '0.5s',  swing: -4 },
+              { dx: 13, delay: '1.0s',  swing:  5 },
+              { dx:  3, delay: '1.5s',  swing: -3 },
+              { dx: 10, delay: '2.0s',  swing:  4 },
+              { dx:  7, delay: '2.5s',  swing: -5 },
+            ].map(({ dx, delay, swing }, i) => {
+              const bx = BOOK_X + BOOK_W * 0.52 + dx - 13
+              const by = BOOK_Y + BOOK_H * 0.16
+              const h  = 24
+              return (
+                <path
+                  key={i}
+                  d={`M ${bx} ${by}
+                      C ${bx + swing} ${by - h*0.3},
+                        ${bx - swing} ${by - h*0.65},
+                        ${bx + swing*0.5} ${by - h}`}
+                  fill="none"
+                  stroke="rgba(215,215,230,0.55)"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  filter="url(#steam-blur)"
+                  style={{
+                    animation: `steam-wisp 3.0s linear ${delay} infinite`,
+                    transformBox: 'fill-box',
+                    transformOrigin: 'center bottom',
+                    pointerEvents: 'none',
+                  }}
+                />
+              )
+            })}
+            </g>
+
+            {/* Mug image — rendered after shadow so it appears in front */}
+            <image
+              href={amBookImg}
+              x={BOOK_X} y={BOOK_Y}
+              width={BOOK_W} height={BOOK_H}
+              preserveAspectRatio="xMidYMid meet"
+              opacity={aboutHovered ? 1 : 0.88}
+              filter={aboutHovered ? 'url(#mug-glow)' : undefined}
+              style={{
+                pointerEvents:'none',
+                transition:'opacity 0.2s ease',
+              }}
+            />
+          </g>
+
+          {/* ── Contact phone — left side of desk ─────────────────────────────── */}
+          {/* Position: PHONE_X/Y/W/H constants above                            */}
+          <g
+            style={{ cursor:'pointer' }}
+            onClick={onContactClick}
+            onMouseEnter={() => setContactHovered(true)}
+            onMouseLeave={() => setContactHovered(false)}
+          >
+            {/* Transparent hit rect — full clickable area */}
+            <rect x={PHONE_X} y={PHONE_Y} width={PHONE_W} height={PHONE_H} fill="transparent" />
+
+            {/* Drop shadow on desk — layered ellipses, pushed below phone */}
+            <ellipse
+              cx={PHONE_X + PHONE_W * 0.5} cy={PHONE_Y + PHONE_H + 14}
+              rx={PHONE_W * 0.50} ry={7}
+              fill="rgba(0,0,0,0.18)"
+              style={{ pointerEvents:'none' }}
+            />
+            <ellipse
+              cx={PHONE_X + PHONE_W * 0.5} cy={PHONE_Y + PHONE_H + 12}
+              rx={PHONE_W * 0.36} ry={5}
+              fill="rgba(0,0,0,0.28)"
+              style={{ pointerEvents:'none' }}
+            />
+            <ellipse
+              cx={PHONE_X + PHONE_W * 0.5} cy={PHONE_Y + PHONE_H + 10}
+              rx={PHONE_W * 0.22} ry={3}
+              fill="rgba(0,0,0,0.40)"
+              style={{ pointerEvents:'none' }}
+            />
+
+            {/* "Contact" label below phone */}
+            <text
+              x={PHONE_X + PHONE_W * 0.5 + 7} y={PHONE_Y + PHONE_H - 26}
+              textAnchor="middle"
+              fontFamily="'Share Tech Mono', monospace"
+              fontSize={11}
+              style={{
+                fill:          contactHovered ? '#ffd080' : 'rgba(200,144,42,0.60)',
+                letterSpacing: '0.18em',
+                pointerEvents: 'none',
+                filter:        contactHovered ? 'drop-shadow(0 0 5px rgba(255,180,40,0.8))' : 'none',
+                transition:    'fill 0.2s ease, filter 0.2s ease',
+              }}
+            >CONTACT</text>
+
+            {/* Phone image — wiggles on hover */}
+            <image
+              href={contactPhoneImg}
+              x={PHONE_X} y={PHONE_Y}
+              width={PHONE_W} height={PHONE_H}
+              preserveAspectRatio="xMidYMid meet"
+              filter={contactHovered ? 'url(#phone-glow)' : undefined}
+              style={{
+                pointerEvents: 'none',
+                transformBox: 'fill-box',
+                transformOrigin: 'center',
+                animation: contactHovered ? 'phone-ring 0.5s ease-in-out 0.1s 3' : 'none',
+                transition: 'filter 0.2s ease',
+              }}
+            />
+          </g>
+
+          {/* ── Safe hover hit rect ──────────────────────────────────────────── */}
+          <rect
+            x={SAFEWEB_X + SAFEWEB_W * 0.22} y={SAFEWEB_Y + SAFEWEB_H * 0.12}
+            width={SAFEWEB_W * 0.56} height={SAFEWEB_H * 0.72}
+            fill="transparent"
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setSafeHovered(true)}
+            onMouseLeave={() => setSafeHovered(false)}
+            onClick={() => { if (!safeUnlocked) setSafeOpen(true) }}
+          />
+
+          {/* ── Safe hint text — visible only on hover ───────────────────────── */}
+          <text
+            x={SAFEWEB_X + SAFEWEB_W * 0.5 + 1} y={SAFEWEB_Y + SAFEWEB_H * 0.44 - 98}
+            textAnchor="middle"
+            fontFamily="'Share Tech Mono', monospace"
+            fontSize={15}
+            fill="rgba(155,155,155,0.88)"
+            style={{
+              pointerEvents: 'none',
+              filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.9))',
+              opacity: safeHovered && !safeUnlocked ? 1 : 0,
+              transition: 'opacity 0.25s ease',
+            }}
+          >Find the numbers</text>
+          <text
+            x={SAFEWEB_X + SAFEWEB_W * 0.5 + 1} y={SAFEWEB_Y + SAFEWEB_H * 0.44 - 98 + 16}
+            textAnchor="middle"
+            fontFamily="'Share Tech Mono', monospace"
+            fontSize={15}
+            fill="rgba(155,155,155,0.88)"
+            style={{
+              pointerEvents: 'none',
+              filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.9))',
+              opacity: safeHovered && !safeUnlocked ? 1 : 0,
+              transition: 'opacity 0.25s ease',
+            }}
+          >to open the safe</text>
+
         </svg>
-
-        {/* Monitor CSS glow (flickers) */}
-        <div style={{
-          position:'absolute', left:'50%', top:'44%',
-          transform:'translate(-50%,-50%)',
-          width:'68%', height:'58%',
-          background:'radial-gradient(ellipse at 50% 65%, rgba(190,148,16,0.5) 0%, rgba(100,76,8,0.22) 28%, transparent 68%)',
-          pointerEvents:'none', zIndex:8,
-          animation:'glow-flicker 7s ease-in-out infinite',
-        }}/>
-
-        {/* Fog pulse */}
-        <div style={{
-          position:'absolute', inset:0,
-          background:'radial-gradient(ellipse 55% 45% at 50% 52%, rgba(50,38,6,0.22) 0%, transparent 70%)',
-          pointerEvents:'none', zIndex:9,
-          animation:'fog-pulse 14s ease-in-out infinite',
-        }}/>
-
-        {/* Computer */}
-        <div style={{
-          position:'absolute', left:'50%', bottom:'29%',
-          transform:'translateX(-50%)',
-          zIndex:10,
-        }}>
-          <Computer onClick={onComputerClick} scale={scale}/>
-        </div>
       </div>
 
-      <HorrorOverlay/>
+      {/* ── Vent zoom black fade — covers everything when zooming in ─────────── */}
+      {ventZooming && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: '#000',
+          animation: 'vent-fade-black 0.85s cubic-bezier(0.4, 0, 1, 1) both',
+          pointerEvents: 'none',
+          zIndex: 400,
+        }} />
+      )}
+
+      {/* ── Film grain, scanlines, vignette, dust, chromatic fringe ─────────── */}
+      {/* Hidden during vent zoom — HorrorOverlay is position:fixed so it would */}
+      {/* float above the zooming room instead of moving with it.               */}
+      {!ventZooming && <HorrorOverlay monitorCx={0.498} monitorCy={0.503}/>}
+
+      {/* ── Safe combination lock ─────────────────────────────────────────────── */}
+      {safeOpen && (
+        <SafeLock
+          onClose={() => setSafeOpen(false)}
+          onUnlock={() => setSafeUnlocked(true)}
+        />
+      )}
     </div>
   )
 }

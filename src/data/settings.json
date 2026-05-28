@@ -11,9 +11,35 @@
     "netlifyHookUrl": ""
   },
   "decorations": {
-    "airVent":  { "show": true,  "x": 0, "y": 0 },
-    "luckSign": { "show": true,  "x": 0, "y": 0 },
-    "deskMug":  { "show": true,  "x": 0, "y": 0 },
-    "deskBook": { "show": true,  "x": 0, "y": 0 }
+    "airVent": {
+      "show": true,
+      "x": 0,
+      "y": 0
+    },
+    "luckSign": {
+      "show": true,
+      "x": 0,
+      "y": 0
+    },
+    "deskMug": {
+      "show": true,
+      "x": 0,
+      "y": 0
+    },
+    "deskBook": {
+      "show": true,
+      "x": 0,
+      "y": 0
+    }
+  },
+  "contact": {
+    "name": "Joe Calvey",
+    "email": "17Calvey@gmail.com",
+    "phone": "07985192584",
+    "location": "London UK",
+    "linkedin": "",
+    "instagram": "",
+    "portfolio": "",
+    "message": ""
   }
 }

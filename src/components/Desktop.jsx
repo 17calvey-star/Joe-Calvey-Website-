@@ -9,7 +9,7 @@ function getClock() {
 }
 
 // ── Title bar ─────────────────────────────────────────────────────────────────
-function TitleBar({ scale: s, title, time, onShutDown }) {
+function TitleBar({ scale: s, title }) {
   return (
     <div style={{
       position: 'absolute', top: 0, left: 0, right: 0,
@@ -18,12 +18,11 @@ function TitleBar({ scale: s, title, time, onShutDown }) {
       borderBottom: `${2 * s}px solid #3030a0`,
       display: 'flex', alignItems: 'center',
       padding: `0 ${10 * s}px`,
-      justifyContent: 'space-between',
       userSelect: 'none',
       zIndex: 100,
       imageRendering: 'pixelated',
     }}>
-      {/* Left: OS logo + title */}
+      {/* OS logo + title */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 * s }}>
         <div style={{
           width: 14 * s, height: 14 * s,
@@ -35,18 +34,12 @@ function TitleBar({ scale: s, title, time, onShutDown }) {
           fontSize: 7 * s, color: '#c0c0e0', letterSpacing: 1,
         }}>{title || 'CALVEY OS  v1.0'}</span>
       </div>
-
-      {/* Right: clock */}
-      <span style={{
-        fontFamily: "'Share Tech Mono', monospace",
-        fontSize: 10 * s, color: '#8080b0', letterSpacing: 1,
-      }}>{time}</span>
     </div>
   )
 }
 
 // ── Taskbar ───────────────────────────────────────────────────────────────────
-function Taskbar({ scale: s, onShutDown, openTitles }) {
+function Taskbar({ scale: s, onShutDown, openTitles, time }) {
   return (
     <div style={{
       position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -67,9 +60,9 @@ function Taskbar({ scale: s, onShutDown, openTitles }) {
           background: 'linear-gradient(180deg, #2a2a4a, #1a1a34)',
           border: `${2 * s}px solid #5050c0`,
           color: '#c0c0e0',
-          padding: `${3 * s}px ${10 * s}px`,
+          padding: `${4 * s}px ${14 * s}px`,
           fontFamily: "'Press Start 2P', monospace",
-          fontSize: 6 * s,
+          fontSize: 7 * s,
           cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 6 * s,
           letterSpacing: 1,
@@ -77,7 +70,7 @@ function Taskbar({ scale: s, onShutDown, openTitles }) {
         onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(180deg, #3a3a6a, #2a2a4a)'}
         onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(180deg, #2a2a4a, #1a1a34)'}
       >
-        ▶ START
+        ▶ HOME
       </button>
 
       {/* Divider */}
@@ -106,7 +99,7 @@ function Taskbar({ scale: s, onShutDown, openTitles }) {
       }}>
         <span style={{ fontSize: 10 * s }}>🔊</span>
         <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 9 * s, color: '#8080b0' }}>
-          {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+          {time}
         </span>
       </div>
     </div>
@@ -232,7 +225,7 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
       imageRendering: 'pixelated',
       overflow: 'hidden',
     }}>
-      <TitleBar scale={s} title={settings?.osTitle} time={time} onShutDown={onExit} />
+      <TitleBar scale={s} title={settings?.osTitle} />
 
       {/* Desktop area */}
       <div style={{
@@ -243,13 +236,15 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
       }}>
         <Wallpaper />
 
-        {/* Icon grid — 2 columns, top-left */}
+        {/* Icon grid — auto-fill, wraps left→right then down */}
         <div style={{
           position: 'absolute',
-          top: 16 * s, left: 16 * s,
+          top: 16 * s, left: 16 * s, right: 16 * s,
           display: 'grid',
-          gridTemplateColumns: `repeat(2, ${80 * s}px)`,
-          gap: `${12 * s}px ${8 * s}px`,
+          gridTemplateColumns: `repeat(auto-fill, ${112 * s}px)`,
+          gridAutoRows: 'max-content',
+          gap: `${14 * s}px ${8 * s}px`,
+          alignContent: 'start',
           zIndex: 10,
         }}>
           {visibleProjects.map(project => (
@@ -285,6 +280,7 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
         scale={s}
         onShutDown={onExit}
         openTitles={openWindows.map(w => w.project.title)}
+        time={time}
       />
     </div>
   )

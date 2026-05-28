@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import projectsData from './data/projects.json'
 import settingsData from './data/settings.json'
 import contentData from './content.json'
 import Room      from './components/Room'
 import Desktop   from './components/Desktop'
+import AboutMe   from './components/AboutMe'
+import Contact   from './components/Contact'
+import VentPage  from './components/VentPage'
 import StaticTransition from './components/StaticTransition'
 import Admin     from './components/Admin'
 
@@ -32,10 +36,20 @@ export default function App() {
   }, [])
 
   // ── View state ───────────────────────────────────────────────────────────────
-  const [view, setView]           = useState('room')   // 'room' | 'desktop'
+  const [view, setView]           = useState(() => {
+    const p = window.location.pathname
+    if (p.startsWith('/portfolio') || p.startsWith('/desktop')) return 'desktop'
+    if (p.startsWith('/about')) return 'about'
+    if (p.startsWith('/contact')) return 'contact'
+    if (p.startsWith('/vent')) return 'vent'
+    return 'room'
+  })   // 'room' | 'desktop' | 'about' | 'contact' | 'vent'
   const [transitioning, setTrans] = useState(false)
-  const [transDir, setTransDir]   = useState('in')     // 'in' = room→desktop
+  const [transDir, setTransDir]   = useState('in')     // 'in' | 'out'
   const [adminOpen, setAdminOpen] = useState(false)
+
+  const navigate = useNavigate()
+  const location = useLocation()
 
   // ── Content state ────────────────────────────────────────────────────────────
   const [projects,  setProjects]  = useState(() => import.meta.env.DEV ? [] : projectsData)
@@ -53,6 +67,29 @@ export default function App() {
         if (d.content)  setContent(d.content)
       })
       .catch(() => setProjects(projectsData))
+  }, [])
+
+  // ── Sync view from URL — handles browser back / forward ──────────────────────
+  useEffect(() => {
+    const p = location.pathname
+    if (p.startsWith('/portfolio') || p.startsWith('/desktop')) {
+      setView('desktop'); setTrans(false)
+    } else if (p.startsWith('/about')) {
+      setView('about'); setTrans(false)
+    } else if (p.startsWith('/contact')) {
+      setView('contact'); setTrans(false)
+    } else if (p.startsWith('/vent')) {
+      setView('vent'); setTrans(false)
+    } else {
+      setView('room'); setTrans(false)
+    }
+  }, [location.pathname]) // eslint-disable-line
+
+  // ── Block Ctrl/Cmd + scroll zoom (desktop browser zoom) ─────────────────────
+  useEffect(() => {
+    const onWheel = (e) => { if (e.ctrlKey || e.metaKey) e.preventDefault() }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
   }, [])
 
   // ── Admin keyboard shortcut (dev only) ───────────────────────────────────────
@@ -149,14 +186,45 @@ export default function App() {
   }, [transitioning])
 
   const handleTransitionComplete = useCallback(() => {
-    setView(transDir === 'in' ? 'desktop' : 'room')
+    if (transDir === 'in') {
+      setView('desktop')
+      navigate('/portfolio')
+    } else if (transDir === 'out') {
+      setView('room')
+      navigate('/')
+    }
     setTrans(false)
-  }, [transDir])
+  }, [transDir, navigate])
 
   const handleExitDesktop = useCallback(() => {
     if (transitioning) return
     setTransDir('out'); setTrans(true)
   }, [transitioning])
+
+  // About uses a simple CSS fade — no static transition
+  const handleAboutClick = useCallback(() => {
+    if (transitioning) return
+    setView('about')
+    navigate('/about')
+  }, [transitioning, navigate])
+
+  const handleContactClick = useCallback(() => {
+    if (transitioning) return
+    setView('contact')
+    navigate('/contact')
+  }, [transitioning, navigate])
+
+  // Vent — zoom completes inside Room before this fires
+  const handleVentClick = useCallback(() => {
+    setView('vent')
+    navigate('/vent')
+  }, [navigate])
+
+  // Shared exit handler — About, Contact and Vent all fade back to room
+  const handleExitToRoom = useCallback(() => {
+    setView('room')
+    navigate('/')
+  }, [navigate])
 
   const handleAdminChange = useCallback(({ projects: p, settings: s, content: c }) => {
     if (p) setProjects(p)
@@ -166,14 +234,22 @@ export default function App() {
 
   return (
     <div ref={containerRef} style={{ position: 'fixed', inset: 0 }}>
-      {/* Room */}
+      {/* Room — stays visible as backdrop when About / Contact / Vent panels open */}
       <div style={{
         position: 'absolute', inset: 0, zIndex: 1,
-        opacity: view === 'room' ? 1 : 0,
+        opacity: view === 'room' || view === 'about' || view === 'contact' || view === 'vent' ? 1 : 0,
         pointerEvents: view === 'room' && !transitioning ? 'auto' : 'none',
         transition: 'opacity 0.3s ease',
       }}>
-        <Room onComputerClick={handleComputerClick} scale={scale} settings={settings} />
+        <Room
+          onComputerClick={handleComputerClick}
+          onAboutClick={handleAboutClick}
+          onContactClick={handleContactClick}
+          onVentClick={handleVentClick}
+          scale={scale}
+          settings={settings}
+          isActive={view === 'room' || view === 'about' || view === 'contact'}
+        />
       </div>
 
       {/* OS Desktop */}
@@ -192,6 +268,33 @@ export default function App() {
           onExit={handleExitDesktop}
         />
       </div>
+
+      {/* About Me */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 3,
+        opacity: view === 'about' && !transitioning ? 1 : 0,
+        pointerEvents: view === 'about' && !transitioning ? 'auto' : 'none',
+        transition: 'opacity 0.3s ease',
+      }}>
+        <AboutMe onClose={handleExitToRoom} settings={settings} />
+      </div>
+
+      {/* Contact */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 3,
+        opacity: view === 'contact' && !transitioning ? 1 : 0,
+        pointerEvents: view === 'contact' && !transitioning ? 'auto' : 'none',
+        transition: 'opacity 0.3s ease',
+      }}>
+        <Contact onClose={handleExitToRoom} settings={settings} />
+      </div>
+
+      {/* Vent — no opacity wrapper; VentPage handles its own fade */}
+      {view === 'vent' && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 4 }}>
+          <VentPage onClose={handleExitToRoom} />
+        </div>
+      )}
 
       {/* TV static transition */}
       <StaticTransition active={transitioning} onComplete={handleTransitionComplete} />

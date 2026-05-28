@@ -36,8 +36,8 @@ export default function DesktopIcon({ project, scale, isActive, isTouchDevice, o
   const [hovered, setHovered] = useState(false)
   const coverUrl = getCoverUrl(project.id)
 
-  const ICON_SIZE  = 48 * s   // image area
-  const LABEL_SIZE = 9 * s    // font size (capped for readability)
+  const ICON_SIZE  = 78 * s   // image area
+  const LABEL_SIZE = 10.5 * s // font size
 
   return (
     <motion.div
@@ -46,13 +46,13 @@ export default function DesktopIcon({ project, scale, isActive, isTouchDevice, o
       onClick={onOpen}
       style={{
         display: 'flex', flexDirection: 'column',
-        alignItems: 'center', gap: 5 * s,
+        alignItems: 'center', gap: 6 * s,
         cursor: 'pointer',
         userSelect: 'none',
-        padding: `${4 * s}px ${4 * s}px`,
+        padding: `${5 * s}px ${4 * s}px`,
         background: (hovered || isActive) ? 'rgba(80,80,200,0.35)' : 'transparent',
         outline: (hovered || isActive) ? `${1 * s}px dashed rgba(180,180,255,0.5)` : 'none',
-        width: 80 * s,
+        width: 112 * s,
       }}
       whileTap={{ scale: 0.9 }}
     >
@@ -79,7 +79,7 @@ export default function DesktopIcon({ project, scale, isActive, isTouchDevice, o
       {/* Label */}
       <div style={{
         fontFamily: "'Press Start 2P', monospace",
-        fontSize: Math.max(6, Math.min(LABEL_SIZE, 10)),
+        fontSize: Math.max(7, Math.min(LABEL_SIZE, 13)),
         color: '#e0e0f0',
         textAlign: 'center',
         lineHeight: 1.4,
@@ -87,7 +87,7 @@ export default function DesktopIcon({ project, scale, isActive, isTouchDevice, o
         textShadow: '1px 1px 0 rgba(0,0,0,0.9), -1px 1px 0 rgba(0,0,0,0.9)',
         wordBreak: 'break-word',
         hyphens: 'auto',
-        maxWidth: 80 * s,
+        maxWidth: 112 * s,
       }}>
         {project.title}
       </div>

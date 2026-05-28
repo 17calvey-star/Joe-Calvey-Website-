@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import radioStaticSrc from '../assets/audio/sfx/RadioStatic.mp3'
 
 // TV static transition overlay.
 // Phase 1 (0–400ms):  static builds in from black
@@ -8,11 +9,28 @@ import { useEffect, useRef, useCallback } from 'react'
 
 const DURATION = 1300
 
+// ── Audio ─────────────────────────────────────────────────────────────────────
+// Adjust volume here (0 = silent, 1 = full).
+// Swap the audio file by changing the import at the top of this file.
+const TRANSITION_VOLUME = 0.25
+
 export default function StaticTransition({ active, onComplete }) {
   const canvasRef  = useRef(null)
   const frameRef   = useRef(null)
   const startRef   = useRef(null)
   const doneRef    = useRef(false)
+  const audioRef   = useRef(null)      // lazily-created Audio instance
+  const fadeTimers = useRef([])        // timeout + interval for fade-out
+
+  // Create (or reuse) the Audio instance.
+  // Only created after a user gesture so autoplay policy is respected.
+  const getAudio = useCallback(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(radioStaticSrc)
+      audioRef.current.volume = TRANSITION_VOLUME
+    }
+    return audioRef.current
+  }, [])
 
   const draw = useCallback((timestamp) => {
     if (!startRef.current) startRef.current = timestamp
@@ -93,6 +111,52 @@ export default function StaticTransition({ active, onComplete }) {
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
     }
   }, [active, draw])
+
+  // ── Audio: play RadioStatic.mp3 for the duration of the transition ────────
+  useEffect(() => {
+    if (!active) return
+
+    // Clear any lingering fade timers from a previous quick re-trigger
+    fadeTimers.current.forEach(id => { clearTimeout(id); clearInterval(id) })
+    fadeTimers.current = []
+
+    const audio = getAudio()
+    audio.currentTime = 0
+    audio.volume = TRANSITION_VOLUME
+    audio.play().catch(() => {}) // silently ignore autoplay-policy rejections
+
+    // Fade out over the last ~350ms of the transition so it doesn't cut abruptly
+    const FADE_START = DURATION * 0.73          // ~950ms in
+    const FADE_STEP_MS = 28
+    const fadeSteps = Math.ceil((DURATION - FADE_START) / FADE_STEP_MS)
+    const volStep   = TRANSITION_VOLUME / fadeSteps
+
+    const t = setTimeout(() => {
+      const iv = setInterval(() => {
+        if (!audioRef.current) { clearInterval(iv); return }
+        const next = audioRef.current.volume - volStep
+        if (next <= 0) {
+          audioRef.current.volume = 0
+          audioRef.current.pause()
+          clearInterval(iv)
+        } else {
+          audioRef.current.volume = next
+        }
+      }, FADE_STEP_MS)
+      fadeTimers.current.push(iv)
+    }, FADE_START)
+
+    fadeTimers.current.push(t)
+
+    return () => {
+      fadeTimers.current.forEach(id => { clearTimeout(id); clearInterval(id) })
+      fadeTimers.current = []
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.volume = TRANSITION_VOLUME  // reset for next use
+      }
+    }
+  }, [active, getAudio])
 
   if (!active) return null
 

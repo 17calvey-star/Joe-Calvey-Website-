@@ -20,20 +20,6 @@ const CSS = `
 // Grain texture as a tiny SVG data URI (feTurbulence noise, tiled)
 const GRAIN_URI = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)' opacity='0.08'/%3E%3C/svg%3E")`
 
-// Dust particle data: [x%, y%, size(px), drift-x, drift-y, duration, delay]
-const DUST = [
-  [28, 42, 1.5, 18, -36, '11s', '0s'  ],
-  [51, 55, 1,   12, -28, '15s', '2.3s'],
-  [63, 36, 2,   22, -44, '9s',  '4.8s'],
-  [44, 62, 1,   16, -20, '13s', '1.1s'],
-  [72, 48, 1.5, 14, -38, '12s', '3.4s'],
-  [38, 33, 1,   20, -30, '14s', '6.2s'],
-  [55, 70, 2,    8, -24, '10s', '0.7s'],
-  [48, 44, 1,   24, -40, '16s', '7.1s'],
-  [66, 60, 1.5, 10, -32, '11s', '5.5s'],
-  [32, 52, 1,   18, -18, '13s', '2.9s'],
-]
-
 // Chromatic aberration: thin red/blue fringe at screen edges
 function ChromaticFringe() {
   return (
@@ -56,7 +42,8 @@ function ChromaticFringe() {
   )
 }
 
-export default function HorrorOverlay() {
+// monitorCx / monitorCy: 0–1 normalised position of CRT screen centre in viewport
+export default function HorrorOverlay({ monitorCx = 0.5, monitorCy = 0.505 }) {
   const canvasRef = useRef(null)
 
   // Animate dust particles on canvas
@@ -65,21 +52,47 @@ export default function HorrorOverlay() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
 
-    // Each particle: { x, y, vx, vy, alpha, life, maxLife, size }
-    const particles = Array.from({length: 22}, () => spawnParticle(canvas))
+    // Two populations:
+    //  TIGHT  — spawn near the CRT glow, catch phosphor light, slightly green-tinted
+    //  WIDE   — room atmosphere, loose amber
+    const TIGHT = 22
+    const WIDE  =  8
 
-    function spawnParticle(c) {
-      return {
-        x:    0.3 * c.width  + Math.random() * 0.4 * c.width,
-        y:    0.3 * c.height + Math.random() * 0.4 * c.height,
-        vx:   (Math.random() - 0.4) * 0.22,
-        vy:   -0.08 - Math.random() * 0.18,
-        alpha: 0,
-        life:  0,
-        maxLife: 180 + Math.random() * 280,
-        size: 0.8 + Math.random() * 1.2,
+    function spawnParticle(c, tight) {
+      if (tight) {
+        // Circular spawn zone around the monitor — radius varies per particle
+        const angle = Math.random() * Math.PI * 2
+        const r     = 0.03 * c.width + Math.random() * 0.11 * c.width
+        return {
+          x:       monitorCx * c.width  + Math.cos(angle) * r,
+          y:       monitorCy * c.height + Math.sin(angle) * r,
+          vx:      (Math.random() - 0.45) * 0.20,
+          vy:      -0.06 - Math.random() * 0.16,
+          alpha:   0,
+          life:    0,
+          maxLife: 160 + Math.random() * 260,
+          size:    0.7 + Math.random() * 1.1,
+          tight:   true,
+        }
+      } else {
+        return {
+          x:       0.25 * c.width  + Math.random() * 0.5 * c.width,
+          y:       0.25 * c.height + Math.random() * 0.5 * c.height,
+          vx:      (Math.random() - 0.4) * 0.18,
+          vy:      -0.05 - Math.random() * 0.12,
+          alpha:   0,
+          life:    0,
+          maxLife: 220 + Math.random() * 320,
+          size:    0.6 + Math.random() * 0.9,
+          tight:   false,
+        }
       }
     }
+
+    const particles = [
+      ...Array.from({ length: TIGHT }, () => spawnParticle(canvas, true)),
+      ...Array.from({ length: WIDE  }, () => spawnParticle(canvas, false)),
+    ]
 
     let raf
     function draw() {
@@ -87,26 +100,31 @@ export default function HorrorOverlay() {
       for (const p of particles) {
         p.life++
         const t = p.life / p.maxLife
-        // Fade in/out
+        // Fade in/out envelope
         p.alpha = t < 0.1 ? t / 0.1 : t > 0.85 ? (1 - t) / 0.15 : 1
         p.x += p.vx
         p.y += p.vy
-        // Subtle drift
-        p.vx += (Math.random() - 0.5) * 0.008
-        p.vy += (Math.random() - 0.5) * 0.004
+        // Micro-drift
+        p.vx += (Math.random() - 0.5) * (p.tight ? 0.010 : 0.007)
+        p.vy += (Math.random() - 0.5) * (p.tight ? 0.005 : 0.003)
+
+        // Tight particles catch green phosphor; wide are warm amber
+        const [r, g, b] = p.tight
+          ? [145, 205, 110]   // phosphor-tinted green-amber
+          : [175, 150, 65]    // distant room dust
 
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(180, 155, 70, ${p.alpha * 0.55})`
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${p.alpha * (p.tight ? 0.65 : 0.45)})`
         ctx.fill()
 
-        if (p.life >= p.maxLife) Object.assign(p, spawnParticle(canvas))
+        if (p.life >= p.maxLife) Object.assign(p, spawnParticle(canvas, p.tight))
       }
       raf = requestAnimationFrame(draw)
     }
     draw()
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [monitorCx, monitorCy])
 
   return (
     <>
@@ -125,7 +143,7 @@ export default function HorrorOverlay() {
         imageRendering:'pixelated',
       }}/>
 
-      {/* ── Full-screen CRT scanlines (coarser, horror-game look) ────────── */}
+      {/* ── Full-screen CRT scanlines ────────────────────────────────────── */}
       <div style={{
         position:'fixed', inset:0, zIndex:201,
         backgroundImage:'repeating-linear-gradient(0deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 2px, transparent 2px, transparent 6px)',
@@ -136,7 +154,7 @@ export default function HorrorOverlay() {
       {/* ── Chromatic fringe ─────────────────────────────────────────────── */}
       <ChromaticFringe/>
 
-      {/* ── Deep vignette (CSS, sharp dark corners) ──────────────────────── */}
+      {/* ── Deep vignette (sharp dark corners) ───────────────────────────── */}
       <div style={{
         position:'fixed', inset:0, zIndex:202,
         background:'radial-gradient(ellipse 78% 72% at 50% 50%, transparent 38%, rgba(0,0,0,0.55) 70%, rgba(0,0,0,0.97) 100%)',
@@ -150,17 +168,16 @@ export default function HorrorOverlay() {
           position:'fixed', inset:0,
           width:'100%', height:'100%',
           pointerEvents:'none', zIndex:203,
-          opacity:0.85,
+          opacity:0.9,
         }}
-        // Set canvas resolution to match window
         width={typeof window !== 'undefined' ? window.innerWidth  : 1280}
         height={typeof window !== 'undefined' ? window.innerHeight : 800}
       />
 
-      {/* ── Very subtle green phosphor screen-bleed across everything ──────── */}
+      {/* ── Green phosphor screen-bleed (concentrated around monitor) ───── */}
       <div style={{
         position:'fixed', inset:0, zIndex:199,
-        background:'radial-gradient(ellipse 30% 25% at 50% 52%, rgba(0,160,40,0.04) 0%, transparent 100%)',
+        background:'radial-gradient(ellipse 26% 22% at 50% 52%, rgba(0,160,40,0.05) 0%, transparent 100%)',
         pointerEvents:'none',
         mixBlendMode:'screen',
       }}/>

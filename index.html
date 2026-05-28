@@ -2,14 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      maximum-scale=1, user-scalable=no — prevents pinch-zoom and
+      browser auto-zoom on mobile so the fixed room layout stays stable.
+      touch-action:manipulation in CSS also blocks double-tap zoom.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Joe Calvey</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+      html, body, #root {
+        width: 100%; height: 100%; overflow: hidden;
+        /* Allows scroll/pan but blocks pinch-zoom and double-tap-zoom */
+        touch-action: manipulation;
+        /* Prevent rubber-band overscroll */
+        overscroll-behavior: none;
+      }
       body { background: #0f0d0a; }
     </style>
   </head>
