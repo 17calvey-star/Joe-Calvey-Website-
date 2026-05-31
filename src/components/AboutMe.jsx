@@ -249,14 +249,7 @@ export default function AboutMe({ onClose, settings }) {
               </p>
             </Section>
 
-            <Section label="contact" delay={360}>
-              <LinkRow label="email"     value="hello@joecalvey.com"       href="mailto:hello@joecalvey.com"/>
-              <LinkRow label="linkedin"  value="linkedin.com/in/joecalvey" href="https://linkedin.com/in/joecalvey"/>
-              <LinkRow label="github"    value="github.com/joecalvey"      href="https://github.com/17calvey-star"/>
-              <LinkRow label="instagram" value="@joecalvey"                href="https://instagram.com/joecalvey"/>
-            </Section>
-
-            <Section label="cv / download" delay={440}>
+            <Section label="cv / download" delay={360}>
               <a
                 href="#" download
                 style={{

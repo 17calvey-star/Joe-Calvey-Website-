@@ -49,19 +49,54 @@ function Btn({ children, onClick, danger, accent, disabled, style = {} }) {
 }
 
 function Field({ label, value, onChange, multiline, placeholder }) {
+  const taRef = useRef(null)
   const style = {
     width: '100%', background: 'rgba(0,0,0,0.4)',
     border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)',
     padding: '6px 10px', fontFamily: SANS, fontSize: 13,
     resize: multiline ? 'vertical' : 'none', outline: 'none',
+    boxSizing: 'border-box',
   }
+
+  const insertBold = () => {
+    const el = taRef.current
+    if (!el) return
+    const start = el.selectionStart
+    const end   = el.selectionEnd
+    const sel   = value.slice(start, end)
+    const next  = value.slice(0, start) + '**' + sel + '**' + value.slice(end)
+    onChange(next)
+    setTimeout(() => {
+      el.focus()
+      el.setSelectionRange(start + 2, end + 2)
+    }, 0)
+  }
+
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 4 }}>
-        {label}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1 }}>
+          {label}
+        </div>
+        {multiline && (
+          <button
+            type="button"
+            onClick={insertBold}
+            title="Bold (**text**)"
+            style={{
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              color: 'rgba(255,255,255,0.7)',
+              fontFamily: SANS, fontWeight: 700, fontSize: 12,
+              padding: '1px 8px', cursor: 'pointer', lineHeight: 1.6,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.14)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+          >B</button>
+        )}
       </div>
       {multiline
-        ? <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={4} style={style} />
+        ? <textarea ref={taRef} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={4} style={style} />
         : <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={style} />
       }
     </div>
@@ -443,7 +478,8 @@ function SettingsTab({ settings, onChange }) {
   const save = async () => {
     setSaving(true)
     try {
-      await api('/api/save-settings', { method: 'POST', body: JSON.stringify({ settings: local }) })
+      const { previewMonth: _pm, ...toSave } = local   // never persist previewMonth to disk
+      await api('/api/save-settings', { method: 'POST', body: JSON.stringify({ settings: toSave }) })
       onChange({ settings: local })
       setStatus('Saved')
       setTimeout(() => setStatus(''), 2000)
@@ -467,8 +503,46 @@ function SettingsTab({ settings, onChange }) {
     })
   }
 
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  const setPreviewMonth = (val) => {
+    const month = val === '' ? null : parseInt(val)
+    setLocal(s => ({ ...s, previewMonth: month === null ? undefined : month }))
+    onChange({ settings: { ...local, previewMonth: month === null ? undefined : month } })
+    if (month === null) localStorage.removeItem('admin-preview-month')
+    else localStorage.setItem('admin-preview-month', month)
+  }
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 20, maxWidth: 480 }}>
+
+      {/* Season Preview */}
+      <div style={{ marginBottom: 24, padding: '12px 14px', border: '1px solid rgba(0,255,65,0.2)', background: 'rgba(0,255,65,0.04)' }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: ACCENT, letterSpacing: 1, marginBottom: 10 }}>🌿 SEASON PREVIEW</div>
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>
+          Override the current month to preview seasonal decorations. Saved in localStorage — never deployed.
+        </div>
+        <select
+          value={local.previewMonth ?? ''}
+          onChange={e => setPreviewMonth(e.target.value)}
+          style={{
+            width: '100%', background: 'rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)',
+            padding: '6px 10px', fontFamily: FONT, fontSize: 12, outline: 'none',
+          }}
+        >
+          <option value="">— Auto (use real month: {MONTHS[new Date().getMonth()]})</option>
+          {MONTHS.map((m, i) => (
+            <option key={i} value={i}>{m}</option>
+          ))}
+        </select>
+        {local.previewMonth !== undefined && local.previewMonth !== null && (
+          <div style={{ marginTop: 6, fontSize: 10, fontFamily: FONT, color: ACCENT }}>
+            ● Previewing: {MONTHS[local.previewMonth]}
+          </div>
+        )}
+      </div>
+
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>SITE</div>
         <Field label="SITE TITLE" value={local.siteTitle || ''} onChange={v => set('siteTitle', v)} placeholder="Joe Calvey" />
@@ -772,19 +846,35 @@ export default function Admin({ projects, settings, content, onClose, onChange }
   }, [onChange])
 
   // Drag to reposition panel
-  const panelRef  = useRef(null)
-  const dragRef   = useRef({ active: false, startX: 0, startY: 0, ox: 0, oy: 0 })
-  const [pos, setPos] = useState({ x: 0, y: 0 })
+  const panelRef   = useRef(null)
+  const dragRef    = useRef({ active: false, startX: 0, startY: 0, ox: 0, oy: 0 })
+  const resizeRef  = useRef({ active: false, startX: 0, startY: 0, sw: 0, sh: 0 })
+  const [pos,  setPos]  = useState({ x: 0, y: 0 })
+  const [size, setSize] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('admin-panel-size') || 'null') || { w: 780, h: 540 } }
+    catch { return { w: 780, h: 540 } }
+  })
 
   const onDragStart = (e) => {
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
     dragRef.current = { active: true, startX: e.clientX - pos.x, startY: e.clientY - pos.y, ox: pos.x, oy: pos.y }
   }
   const onDragMove = useCallback((e) => {
-    if (!dragRef.current.active) return
-    setPos({ x: e.clientX - dragRef.current.startX, y: e.clientY - dragRef.current.startY })
+    if (dragRef.current.active)
+      setPos({ x: e.clientX - dragRef.current.startX, y: e.clientY - dragRef.current.startY })
+    if (resizeRef.current.active) {
+      const newW = Math.max(520, Math.min(window.innerWidth  - 40, resizeRef.current.sw + (e.clientX - resizeRef.current.startX)))
+      const newH = Math.max(380, Math.min(window.innerHeight - 40, resizeRef.current.sh + (e.clientY - resizeRef.current.startY)))
+      setSize({ w: newW, h: newH })
+    }
   }, [])
-  const onDragEnd = useCallback(() => { dragRef.current.active = false }, [])
+  const onDragEnd = useCallback(() => {
+    dragRef.current.active = false
+    if (resizeRef.current.active) {
+      resizeRef.current.active = false
+      setSize(s => { localStorage.setItem('admin-panel-size', JSON.stringify(s)); return s })
+    }
+  }, [])
 
   useEffect(() => {
     window.addEventListener('mousemove', onDragMove)
@@ -803,7 +893,7 @@ export default function Admin({ projects, settings, content, onClose, onChange }
           position: 'absolute',
           top: `calc(50% + ${pos.y}px)`, left: `calc(50% + ${pos.x}px)`,
           transform: 'translate(-50%, -50%)',
-          width: 780, height: 540,
+          width: size.w, height: size.h,
           background: '#0e0c09',
           border: '1px solid rgba(0,255,65,0.25)',
           boxShadow: '0 0 0 1px rgba(0,0,0,0.8), 0 24px 64px rgba(0,0,0,0.9)',
@@ -885,6 +975,20 @@ export default function Admin({ projects, settings, content, onClose, onChange }
           {tab === 'deploy'   && <DeployTab />}
           {tab === 'todo'     && <TodoTab />}
         </div>
+
+        {/* ── Resize handle — bottom-right corner ─────────────────────── */}
+        <div
+          onMouseDown={e => {
+            e.preventDefault()
+            resizeRef.current = { active: true, startX: e.clientX, startY: e.clientY, sw: size.w, sh: size.h }
+          }}
+          style={{
+            position: 'absolute', bottom: 0, right: 0,
+            width: 16, height: 16,
+            cursor: 'nwse-resize',
+            background: 'linear-gradient(135deg, transparent 40%, rgba(0,255,65,0.35) 40%, rgba(0,255,65,0.35) 55%, transparent 55%, transparent 70%, rgba(0,255,65,0.35) 70%)',
+          }}
+        />
       </div>
     </div>,
     document.body

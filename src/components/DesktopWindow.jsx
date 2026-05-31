@@ -2,6 +2,22 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 
+// ── Rich text renderer — supports **bold** syntax ────────────────────────────
+function RichText({ text, style }) {
+  if (!text) return null
+  // Split on **…** markers and alternate normal / bold
+  const parts = text.split(/\*\*(.+?)\*\*/gs)
+  return (
+    <p style={{ ...style, whiteSpace: 'pre-wrap' }}>
+      {parts.map((part, i) =>
+        i % 2 === 1
+          ? <strong key={i} style={{ fontWeight: 700, color: 'inherit' }}>{part}</strong>
+          : part
+      )}
+    </p>
+  )
+}
+
 // Work image glob
 const workGlob = import.meta.glob(
   '../assets/images/projects/*/work/*.{png,jpg,jpeg,webp,PNG,JPG,JPEG}',
@@ -231,8 +247,18 @@ export default function DesktopWindow({ project, content, scale, zIndex, isActiv
             fontSize: Math.max(6, 7 * s), color: '#fff',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             maxWidth: '70%',
+            display: 'flex', alignItems: 'center', gap: 6 * s,
           }}>
-            📁 {project.title}
+            {coverUrl ? (
+              <img src={coverUrl} alt="" style={{
+                width: 16 * s, height: 16 * s,
+                objectFit: 'cover',
+                imageRendering: 'pixelated',
+                flexShrink: 0,
+                border: `${1 * s}px solid rgba(255,255,255,0.2)`,
+              }} />
+            ) : <span>📁</span>}
+            {project.title}
           </span>
           <div style={{ display: 'flex', gap: 3 * s }}>
             <WinBtn color="#c0c000" label="–" onClick={() => {}} />
@@ -305,12 +331,12 @@ export default function DesktopWindow({ project, content, scale, zIndex, isActiv
 
             {/* Brief */}
             {project.brief && (
-              <p style={{
+              <RichText text={project.brief} style={{
                 fontFamily: "'Inter', sans-serif",
                 fontSize: Math.max(10, 12 * s),
                 color: 'rgba(255,255,255,0.55)',
                 lineHeight: 1.6, margin: `0 0 ${12 * s}px`,
-              }}>{project.brief}</p>
+              }} />
             )}
 
             <div style={{ height: 1 * s, background: '#3030a060', margin: `${8 * s}px 0` }} />
@@ -328,12 +354,12 @@ export default function DesktopWindow({ project, content, scale, zIndex, isActiv
                   color: color, letterSpacing: 1,
                   marginBottom: 4 * s,
                 }}>{sec.label.toUpperCase()}</div>
-                <p style={{
+                <RichText text={content[sec.key]} style={{
                   fontFamily: "'Inter', sans-serif",
                   fontSize: Math.max(10, 11 * s),
                   color: 'rgba(255,255,255,0.7)',
                   lineHeight: 1.65, margin: 0,
-                }}>{content[sec.key]}</p>
+                }} />
               </div>
             ))}
 
@@ -345,12 +371,12 @@ export default function DesktopWindow({ project, content, scale, zIndex, isActiv
                   fontSize: Math.max(6, 7 * s),
                   color: 'rgba(255,255,255,0.3)', marginBottom: 4 * s,
                 }}>WORKED WITH</div>
-                <p style={{
+                <RichText text={content.workedWith} style={{
                   fontFamily: "'Inter', sans-serif",
                   fontSize: Math.max(9, 10 * s),
                   color: 'rgba(255,255,255,0.4)',
                   lineHeight: 1.6, margin: 0,
-                }}>{content.workedWith}</p>
+                }} />
               </div>
             )}
           </div>

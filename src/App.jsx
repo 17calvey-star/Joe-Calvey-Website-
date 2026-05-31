@@ -47,6 +47,7 @@ export default function App() {
   const [transitioning, setTrans] = useState(false)
   const [transDir, setTransDir]   = useState('in')     // 'in' | 'out'
   const [adminOpen, setAdminOpen] = useState(false)
+  const [hasVisitedVent, setHasVisitedVent] = useState(false)
 
   const navigate = useNavigate()
   const location = useLocation()
@@ -63,10 +64,17 @@ export default function App() {
       .then(r => r.json())
       .then(d => {
         if (d.projects) setProjects(d.projects)
-        if (d.settings) setSettings(d.settings)
+        if (d.settings) setSettings(s => ({ ...d.settings, previewMonth: s.previewMonth }))
         if (d.content)  setContent(d.content)
       })
       .catch(() => setProjects(projectsData))
+  }, [])
+
+  // Load admin season preview month from localStorage
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const saved = localStorage.getItem('admin-preview-month')
+    if (saved !== null) setSettings(s => ({ ...s, previewMonth: parseInt(saved) }))
   }, [])
 
   // ── Sync view from URL — handles browser back / forward ──────────────────────
@@ -216,6 +224,7 @@ export default function App() {
 
   // Vent — zoom completes inside Room before this fires
   const handleVentClick = useCallback(() => {
+    setHasVisitedVent(true)
     setView('vent')
     navigate('/vent')
   }, [navigate])
@@ -246,6 +255,7 @@ export default function App() {
           onAboutClick={handleAboutClick}
           onContactClick={handleContactClick}
           onVentClick={handleVentClick}
+          hasVisitedVent={hasVisitedVent}
           scale={scale}
           settings={settings}
           isActive={view === 'room' || view === 'about' || view === 'contact'}
@@ -266,6 +276,8 @@ export default function App() {
           scale={scale}
           isTouchDevice={isTouchDevice}
           onExit={handleExitDesktop}
+          adminMode={adminOpen}
+          onProjectsChange={handleAdminChange}
         />
       </div>
 

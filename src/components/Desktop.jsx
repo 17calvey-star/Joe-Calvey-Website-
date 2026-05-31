@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import DesktopIcon   from './DesktopIcon'
 import DesktopWindow from './DesktopWindow'
@@ -32,14 +32,14 @@ function TitleBar({ scale: s, title }) {
         <span style={{
           fontFamily: "'Press Start 2P', monospace",
           fontSize: 7 * s, color: '#c0c0e0', letterSpacing: 1,
-        }}>{title || 'CALVEY OS  v1.0'}</span>
+        }}>{title || 'Calvey v1.0'}</span>
       </div>
     </div>
   )
 }
 
 // ── Taskbar ───────────────────────────────────────────────────────────────────
-function Taskbar({ scale: s, onShutDown, openTitles, time }) {
+function Taskbar({ scale: s, onShutDown, openTitles, time, adminMode, onResetLayout, saving }) {
   return (
     <div style={{
       position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -86,6 +86,35 @@ function Taskbar({ scale: s, onShutDown, openTitles, time }) {
           maxWidth: 120 * s, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{t}</div>
       ))}
+
+      {/* Admin controls */}
+      {adminMode && (
+        <>
+          <div style={{ width: 1 * s, height: 22 * s, background: '#3030a0' }} />
+          <button
+            onClick={onResetLayout}
+            style={{
+              background: 'linear-gradient(180deg, #2a1a1a, #1a0e0e)',
+              border: `${2 * s}px solid #a03030`,
+              color: '#e08080',
+              padding: `${4 * s}px ${10 * s}px`,
+              fontFamily: "'Press Start 2P', monospace",
+              fontSize: 6 * s, cursor: 'pointer', letterSpacing: 1,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(180deg, #3a2020, #2a1010)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(180deg, #2a1a1a, #1a0e0e)'}
+          >⟳ RESET LAYOUT</button>
+          <div style={{
+            fontFamily: "'Press Start 2P', monospace",
+            fontSize: 6 * s, color: saving ? '#ffdd80' : '#ff8888',
+            letterSpacing: 1, padding: `${2 * s}px ${6 * s}px`,
+            border: `${1 * s}px solid ${saving ? '#806040' : '#602020'}`,
+            background: saving ? '#1a1500' : '#1a0a0a',
+          }}>
+            {saving ? '● SAVING' : '✎ ADMIN'}
+          </div>
+        </>
+      )}
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
@@ -174,11 +203,43 @@ function Wallpaper() {
 
 // ── Main Desktop component ────────────────────────────────────────────────────
 
-export default function Desktop({ projects, content, settings, scale, isTouchDevice, onExit }) {
+// ── Calculate default grid position (% of desktop area) ─────────────────────
+function getDefaultPos(index, dw, dh, s) {
+  const ICON_W = 112 * s
+  const ICON_H = 124 * s
+  const PAD    = 16  * s
+  const GAP_X  = 8   * s
+  const GAP_Y  = 14  * s
+  const cols   = Math.max(1, Math.floor((dw - PAD * 2 + GAP_X) / (ICON_W + GAP_X)))
+  const col    = index % cols
+  const row    = Math.floor(index / cols)
+  const x      = PAD + col * (ICON_W + GAP_X)
+  const y      = PAD + row * (ICON_H + GAP_Y)
+  return {
+    xPct: Math.min(90, (x / dw) * 100),
+    yPct: Math.min(90, (y / dh) * 100),
+  }
+}
+
+export default function Desktop({ projects, content, settings, scale, isTouchDevice, onExit, adminMode, onProjectsChange }) {
   const s = scale
-  const [time, setTime]             = useState(getClock)
-  const [openWindows, setWindows]   = useState([])
-  const [activeId, setActiveId]     = useState(null)
+  const [time, setTime]           = useState(getClock)
+  const [openWindows, setWindows] = useState([])
+  const [activeId, setActiveId]   = useState(null)
+  const [saving, setSaving]       = useState(false)
+  const desktopAreaRef            = useRef(null)
+  const [desktopSize, setDesktopSize] = useState({ w: 1280, h: 720 })
+
+  // Track desktop area size for percentage ↔ pixel conversion
+  useEffect(() => {
+    const el = desktopAreaRef.current
+    if (!el) return
+    const obs = new ResizeObserver(([entry]) => {
+      setDesktopSize({ w: entry.contentRect.width, h: entry.contentRect.height })
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
 
   // Live clock
   useEffect(() => {
@@ -192,11 +253,7 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
 
   const openProject = useCallback((project) => {
     const id = project.id
-    // Bring to front if already open
-    if (openWindows.find(w => w.id === id)) {
-      setActiveId(id)
-      return
-    }
+    if (openWindows.find(w => w.id === id)) { setActiveId(id); return }
     setWindows(ws => [...ws, { id, project }])
     setActiveId(id)
   }, [openWindows])
@@ -206,7 +263,40 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
     setActiveId(prev => prev === id ? null : prev)
   }, [])
 
-  // Ctrl+Escape or keyboard shortcut to exit
+  // Save a single icon's position to projects data + API
+  const handlePositionSave = useCallback(async (projectId, xPct, yPct) => {
+    const updated = projects.map(p =>
+      p.id === projectId ? { ...p, desktopPos: { x: xPct, y: yPct } } : p
+    )
+    onProjectsChange?.({ projects: updated })
+    if (!import.meta.env.DEV) return
+    setSaving(true)
+    try {
+      await fetch('/api/save-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projects: updated }),
+      })
+    } catch (e) { console.warn('Position save failed', e) }
+    finally { setTimeout(() => setSaving(false), 900) }
+  }, [projects, onProjectsChange])
+
+  // Reset all positions to auto-grid
+  const handleResetLayout = useCallback(async () => {
+    const updated = projects.map(p => ({ ...p, desktopPos: { x: 0, y: 0 } }))
+    onProjectsChange?.({ projects: updated })
+    if (!import.meta.env.DEV) return
+    setSaving(true)
+    try {
+      await fetch('/api/save-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projects: updated }),
+      })
+    } catch (e) { console.warn('Reset failed', e) }
+    finally { setTimeout(() => setSaving(false), 900) }
+  }, [projects, onProjectsChange])
+
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape' && openWindows.length === 0) onExit()
@@ -227,27 +317,26 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
     }}>
       <TitleBar scale={s} title={settings?.osTitle} />
 
-      {/* Desktop area */}
-      <div style={{
-        position: 'absolute',
-        top: TITLE_H, bottom: TASK_H,
-        left: 0, right: 0,
-        overflow: 'hidden',
-      }}>
+      {/* Desktop area — icons are absolutely positioned */}
+      <div
+        ref={desktopAreaRef}
+        style={{
+          position: 'absolute',
+          top: TITLE_H, bottom: TASK_H,
+          left: 0, right: 0,
+          overflow: 'hidden',
+        }}
+      >
         <Wallpaper />
 
-        {/* Icon grid — auto-fill, wraps left→right then down */}
-        <div style={{
-          position: 'absolute',
-          top: 16 * s, left: 16 * s, right: 16 * s,
-          display: 'grid',
-          gridTemplateColumns: `repeat(auto-fill, ${112 * s}px)`,
-          gridAutoRows: 'max-content',
-          gap: `${14 * s}px ${8 * s}px`,
-          alignContent: 'start',
-          zIndex: 10,
-        }}>
-          {visibleProjects.map(project => (
+        {visibleProjects.map((project, index) => {
+          const saved = project.desktopPos
+          const hasCustom = saved && (saved.x !== 0 || saved.y !== 0)
+          const { xPct, yPct } = hasCustom
+            ? { xPct: saved.x, yPct: saved.y }
+            : getDefaultPos(index, desktopSize.w, desktopSize.h, s)
+
+          return (
             <DesktopIcon
               key={project.id}
               project={project}
@@ -255,9 +344,14 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
               isActive={activeId === project.id}
               isTouchDevice={isTouchDevice}
               onOpen={() => openProject(project)}
+              adminMode={adminMode}
+              xPct={xPct}
+              yPct={yPct}
+              desktopSize={desktopSize}
+              onPositionSave={(x, y) => handlePositionSave(project.id, x, y)}
             />
-          ))}
-        </div>
+          )
+        })}
 
         {/* Open windows */}
         <AnimatePresence>
@@ -281,6 +375,9 @@ export default function Desktop({ projects, content, settings, scale, isTouchDev
         onShutDown={onExit}
         openTitles={openWindows.map(w => w.project.title)}
         time={time}
+        adminMode={adminMode}
+        onResetLayout={handleResetLayout}
+        saving={saving}
       />
     </div>
   )

@@ -6,9 +6,13 @@ import fanImg    from '../assets/images/FAN.png'
 import amBookImg       from '../assets/images/AMmug.png'
 import boxesImg        from '../assets/images/Boxes.png'
 import safeWebImg      from '../assets/images/SafeWeb1.png'
-import safeOpenedImg  from '../assets/images/SafeOpened.png'
+import safeOpenedImg  from '../assets/images/SafeOpened1.png'
 import tableOverlayImg from '../assets/images/Tableoverlay.png'
 import contactPhoneImg from '../assets/images/ContactPhone.png'
+import windowImg       from '../assets/images/WindowWS.png'
+import buntingImg      from '../assets/images/SummerBunting.png'
+import autumnBuntingImg from '../assets/images/AutumnBunting.png'
+import outsideImg      from '../assets/images/icontp.png'
 import fridgeAmbient from '../assets/audio/ambient/fridge.mp3'
 
 // ── Ambient audio ─────────────────────────────────────────────────────────────
@@ -54,6 +58,44 @@ const ANIM = `
   0%   { transform: scale(1)   translateZ(0); filter: brightness(1);    }
   65%  { transform: scale(4.5) translateZ(0); filter: brightness(0.35); }
   100% { transform: scale(7)   translateZ(0); filter: brightness(0);    }
+}
+@keyframes leaf-drift {
+  0%   { transform: translate(0px,  0px);  opacity: 0;    }
+  6%   { opacity: 0.80; }
+  25%  { transform: translate( 5px,  18px); opacity: 0.72; }
+  50%  { transform: translate(-4px,  38px); opacity: 0.55; }
+  75%  { transform: translate( 6px,  57px); opacity: 0.30; }
+  92%  { opacity: 0.08; }
+  100% { transform: translate(-3px,  75px); opacity: 0;   }
+}
+@keyframes leaf-drift-fast {
+  0%   { transform: translate(0px,  0px);  opacity: 0;    }
+  5%   { opacity: 0.85; }
+  30%  { transform: translate(-4px,  22px); opacity: 0.70; }
+  65%  { transform: translate( 5px,  50px); opacity: 0.40; }
+  90%  { opacity: 0.08; }
+  100% { transform: translate(-2px,  75px); opacity: 0;   }
+}
+@keyframes leaf-spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+@keyframes rain-fall {
+  from { transform: translateY(-28px); }
+  to   { transform: translateY(85px);  }
+}
+@keyframes cat-blink {
+  0%,  88%,  100% { transform: scaleY(1);    }
+  91%             { transform: scaleY(0.05); }
+  94%             { transform: scaleY(1);    }
+}
+@keyframes cat-glow-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 0.70; }
+}
+@keyframes cat-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @keyframes steam-wisp {
   0%   { transform: translateY(0px)   translateX(0px);   opacity: 0.35; }
@@ -105,7 +147,7 @@ const FAN_SPEED = '5s'   // full rotation duration
 // To reposition: adjust BOOK_X / BOOK_Y / BOOK_W / BOOK_H
 // To swap the image: change the amBookImg import at the top of this file
 const BOOK_X = 784    // SVG x (left edge of book) — far right of desk
-const BOOK_Y = 670    // SVG y (top edge of book) — sits on desk surface
+const BOOK_Y = 668    // SVG y (top edge of book) — sits on desk surface
 const BOOK_W = 173    // SVG width  — noticeably larger for readability
 const BOOK_H = 85     // SVG height
 
@@ -137,6 +179,47 @@ const PHONE_Y  = 640   // SVG y — so bottom (660+70=730) sits on desk surface
 const PHONE_W  = 160   // SVG width
 const PHONE_H  = 140   // SVG height
 
+// ── Barred window — upper-left back wall ──────────────────────────────────────
+// 🔧 Adjust WIN_X / WIN_Y / WIN_W / WIN_H to reposition
+const WIN_X = 347   // SVG x (left edge)
+const WIN_Y = 203   // SVG y (top edge)
+const WIN_W = 320   // SVG width
+const WIN_H = 310   // SVG height
+
+// ── Autumn leaves — pre-calculated, fall vertically down through the window ──────
+const AUTUMN_LEAVES = Array.from({ length: 22 }, (_, i) => ({
+  x:     4 + (i * 13) % 260,                     // spread across window width
+  y:     -12 - (i * 7) % 20,                     // start above window top
+  rx:    1.6 + (i % 4) * 0.6,                    // leaf width
+  ry:    2.8 + (i % 5) * 0.7,                    // leaf height
+  rot:   (i * 53) % 360,                          // initial rotation
+  fast:  i % 3 === 0,                             // every 3rd leaf falls fast
+  dur:   i % 3 === 0 ? 2.8 + (i % 4) * 0.4       // fast: 2.8 – 4.0s
+                      : 5.0 + (i % 5) * 0.7,      // slow: 5.0 – 8.0s
+  dly:   (i * 0.45) % 4.5,
+  color: ['rgba(195,80,15', 'rgba(165,55,8', 'rgba(210,115,22', 'rgba(145,45,5', 'rgba(180,95,20', 'rgba(220,140,30'][i % 6],
+}))
+
+// ── Rain drops — pre-calculated so they don't change on re-render ─────────────
+const RAIN_DROPS = Array.from({ length: 32 }, (_, i) => ({
+  x:   (i * 113 + 17) % 275,          // spread across window width
+  dur: 0.50 + (i % 8) * 0.055,        // 0.50 – 0.885s
+  dly: (i * 0.09) % 0.85,             // stagger
+  len: 8  + (i % 6) * 3,             // 8 – 23px streak length
+  dx:  1  + (i % 3),                  // 1–3px horizontal angle
+  op:  0.18 + (i % 5) * 0.09,         // 0.18 – 0.54 opacity
+}))
+
+// ── Window outside scene ──────────────────────────────────────────────────────
+// 🔧 To add an outside image: set OUTSIDE_IMG = outsideImg (imported above)
+const OUTSIDE_IMG = null
+
+// ── Cat eyes — hidden under the table after visiting the vent ─────────────────
+// 🔧 Adjust CAT_X / CAT_Y to reposition; CAT_GAP = distance between eye centres
+const CAT_X   = 545   // SVG x midpoint between eyes
+const CAT_Y   = 848   // SVG y — shadow under the desk
+const CAT_GAP = 26    // px between eye centres
+
 // ── SVG defs ──────────────────────────────────────────────────────────────────
 function Defs() {
   return (
@@ -162,6 +245,20 @@ function Defs() {
         <stop offset="100%" stopColor="#020c03"/>
       </linearGradient>
 
+      {/* Autumn fog — warm amber-brown haze at window base */}
+      <linearGradient id="autumn-fog" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stopColor="rgba(0,0,0,0)"/>
+        <stop offset="100%" stopColor="rgba(35,18,4,0.80)"/>
+      </linearGradient>
+
+      {/* Outside window — edge vignette for depth */}
+      <radialGradient id="outside-vignette" cx="50%" cy="50%" r="70%"
+        gradientUnits="objectBoundingBox">
+        <stop offset="0%"   stopColor="black" stopOpacity="0"/>
+        <stop offset="70%"  stopColor="black" stopOpacity="0.15"/>
+        <stop offset="100%" stopColor="black" stopOpacity="0.55"/>
+      </radialGradient>
+
       {/* Hover green bloom */}
       <radialGradient id="hover-bloom" cx="50%" cy="50%" r="65%"
         gradientUnits="objectBoundingBox">
@@ -181,13 +278,21 @@ function Defs() {
       </filter>
 
       {/* Hover bloom — cinematic, not overpowering */}
-      <filter id="hover-glow" x="-22%" y="-22%" width="144%" height="144%"
+      <filter id="hover-glow" x="-30%" y="-30%" width="160%" height="160%"
         colorInterpolationFilters="sRGB">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur"/>
         <feColorMatrix in="blur" type="matrix"
-          values="0 0 0 0 0   0 1 0 0 0.55   0 0 0 0 0   0 0 0 0.5 0"
+          values="0 0 0 0 0   0 1 0 0 0.72   0 0 0 0 0   0 0 0 0.70 0"
           result="glow"/>
-        <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="innerBlur"/>
+        <feColorMatrix in="innerBlur" type="matrix"
+          values="0 0 0 0 0   0 1 0 0 0.50   0 0 0 0 0   0 0 0 0.55 0"
+          result="innerGlow"/>
+        <feMerge>
+          <feMergeNode in="glow"/>
+          <feMergeNode in="innerGlow"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
       </filter>
 
       {/* Subtle chromatic aberration on hover text */}
@@ -287,6 +392,23 @@ function Defs() {
         <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
 
+      {/* Cat eye glow */}
+      <filter id="cat-eye-glow" x="-400%" y="-400%" width="900%" height="900%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="outerBlur"/>
+        <feColorMatrix in="outerBlur" type="matrix"
+          values="0 0 0 0 0.50  0 0 0 0 0.85  0 0 0 0 0.05  0 0 0 1.00 0"
+          result="outerGlow"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="innerBlur"/>
+        <feColorMatrix in="innerBlur" type="matrix"
+          values="0 0 0 0 0.70  0 0 0 0 1.00  0 0 0 0 0.10  0 0 0 0.90 0"
+          result="innerGlow"/>
+        <feMerge>
+          <feMergeNode in="outerGlow"/>
+          <feMergeNode in="innerGlow"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+
       {/* Steam softener */}
       <filter id="steam-blur" x="-60%" y="-20%" width="220%" height="140%">
         <feGaussianBlur stdDeviation="1.2"/>
@@ -306,7 +428,7 @@ function Defs() {
 }
 
 // ── Main Room ─────────────────────────────────────────────────────────────────
-export default function Room({ onComputerClick, onAboutClick, onContactClick, onVentClick, settings, isActive }) {
+export default function Room({ onComputerClick, onAboutClick, onContactClick, onVentClick, hasVisitedVent, settings, isActive }) {
   const [hovered,        setHovered]        = useState(false)
   const [aboutHovered,   setAboutHovered]   = useState(false)
   const [contactHovered, setContactHovered] = useState(false)
@@ -316,6 +438,9 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
   const [flickerOp,      setFlickerOp]      = useState(1)
   const [ventHovered,    setVentHovered]    = useState(false)
   const [ventZooming,    setVentZooming]    = useState(false)
+  const [soundReady,     setSoundReady]     = useState(false)
+  const [catEyesVisible, setCatEyesVisible] = useState(false)
+  const [catEyesClicked, setCatEyesClicked] = useState(false)
   const timerRef    = useRef(null)
   const ambientRef  = useRef(null)
   const ventTimerRef = useRef(null)
@@ -324,6 +449,13 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
   useEffect(() => {
     if (isActive) setVentZooming(false)
   }, [isActive])
+
+  // Reveal cat eyes 1.5s after returning to the room post-vent
+  useEffect(() => {
+    if (!hasVisitedVent || !isActive || catEyesVisible) return
+    const t = setTimeout(() => setCatEyesVisible(true), 1500)
+    return () => clearTimeout(t)
+  }, [hasVisitedVent, isActive]) // eslint-disable-line
 
   // Random brightness dip — simulates failing CRT tube
   useEffect(() => {
@@ -360,7 +492,10 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
     audio.volume = 0
     ambientRef.current = audio
 
+    let started = false
+
     const fadeIn = () => {
+      setSoundReady(true)
       let v = 0
       const step = () => {
         v = Math.min(v + 0.01, AMBIENT_VOLUME)
@@ -370,19 +505,32 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
       step()
     }
 
-    const tryPlay = () => { audio.play().then(fadeIn).catch(() => {}) }
+    const removeListeners = () => {
+      document.removeEventListener('pointerdown', onGesture)
+      document.removeEventListener('touchstart',  onGesture)
+      document.removeEventListener('keydown',     onGesture)
+    }
 
-    // Try immediate autoplay; fall back to first user gesture
-    audio.play().then(fadeIn).catch(() => {
-      document.addEventListener('click',      tryPlay, { once: true })
-      document.addEventListener('touchstart', tryPlay, { once: true })
-      document.addEventListener('keydown',    tryPlay, { once: true })
-    })
+    // Safari: play() must be called synchronously inside the gesture handler.
+    // Chrome/Edge: pointerdown fires before click, giving fastest response.
+    // Guard with `started` set synchronously so double-events (touchstart+click
+    // on mobile Chrome) never call play() twice.
+    const onGesture = () => {
+      if (started) return
+      started = true
+      removeListeners()
+      audio.play().then(fadeIn).catch(() => { started = false })
+    }
+
+    document.addEventListener('pointerdown', onGesture)
+    document.addEventListener('touchstart',  onGesture)   // Safari fallback
+    document.addEventListener('keydown',     onGesture)
+
+    // Also try immediate autoplay (works in dev / return visitors with high MEI)
+    audio.play().then(() => { started = true; removeListeners(); fadeIn() }).catch(() => {})
 
     return () => {
-      document.removeEventListener('click',      tryPlay)
-      document.removeEventListener('touchstart', tryPlay)
-      document.removeEventListener('keydown',    tryPlay)
+      removeListeners()
       audio.pause()
       audio.src = ''
       ambientRef.current = null
@@ -452,6 +600,104 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
 
           {/* ── Background room image ─────────────────────────────────────────── */}
           <image href={roomBg} x={0} y={0} width={IMG_W} height={IMG_H}/>
+
+          {/* ── Barred window — upper-left back wall ────────────────────────── */}
+          {/* 🔧 Position: WIN_X / WIN_Y / WIN_W / WIN_H constants above        */}
+
+          {/* Outside view — clipped to window bounds, sits BEHIND the PNG      */}
+          {/* The transparent glass areas of WindowWS.png reveal this layer     */}
+          {/* 🔧 Swap background: set OUTSIDE_IMG constant above                */}
+          <clipPath id="window-outside-clip">
+            <rect x={WIN_X + 26} y={WIN_Y + 78} width={275} height={70}/>
+          </clipPath>
+          {(() => {
+            const activeMonth = settings?.previewMonth ?? new Date().getMonth()
+            const isAutumn    = [8, 9, 10].includes(activeMonth)
+            const wx = WIN_X + 26, wy = WIN_Y + 78
+            return (
+              <g clipPath="url(#window-outside-clip)" style={{ pointerEvents: 'none' }}>
+                {OUTSIDE_IMG ? (
+                  <image href={OUTSIDE_IMG} x={wx} y={wy} width={275} height={70} preserveAspectRatio="xMidYMid slice"/>
+                ) : isAutumn ? (
+                  /* ── Autumn outside ─────────────────────────────────────── */
+                  <>
+                    {/* Clear daytime autumn sky */}
+                    <rect x={wx} y={wy} width={275} height={70} fill="#7ab8d4"/>
+                    {/* Lighter sky near top */}
+                    <rect x={wx} y={wy} width={275} height={25} fill="rgba(180,220,245,0.45)"/>
+                    {/* Distant treeline — dark green silhouette */}
+                    <rect x={wx} y={wy + 44} width={275} height={26} fill="#2d4a28"/>
+                    {/* Ground — earthy brown */}
+                    <rect x={wx} y={wy + 58} width={275} height={12} fill="#5a3d1a"/>
+                    {/* Leaves blowing in wind — outer g drifts left, inner ellipse spins */}
+                    {AUTUMN_LEAVES.map((l, i) => (
+                      <g
+                        key={i}
+                        style={{
+                          animation: `${l.fast ? 'leaf-drift-fast' : 'leaf-drift'} ${l.dur}s linear ${l.dly}s infinite`,
+                          transform: `translate(${wx + l.x}px, ${wy + l.y}px)`,
+                        }}
+                      >
+                        <ellipse
+                          cx={0} cy={0}
+                          rx={l.rx} ry={l.ry}
+                          fill={`${l.color},${0.65 + (i % 4) * 0.08})`}
+                          style={{
+                            animation: `leaf-spin ${l.dur * 0.35}s linear ${l.dly}s infinite`,
+                            transformBox: 'fill-box',
+                            transformOrigin: 'center',
+                          }}
+                        />
+                      </g>
+                    ))}
+                    {/* Edge vignette */}
+                    <rect x={wx} y={wy} width={275} height={70} fill="url(#outside-vignette)"/>
+                  </>
+                ) : (
+                  /* ── Rainy outside (default) ────────────────────────────── */
+                  <>
+                    <rect x={wx} y={wy} width={275} height={70} fill="#04060c"/>
+                    {RAIN_DROPS.map((d, i) => {
+                      const x1 = wx + d.x
+                      const y1 = wy
+                      return (
+                        <line key={i}
+                          x1={x1} y1={y1} x2={x1 + d.dx} y2={y1 + d.len}
+                          stroke={`rgba(160,185,215,${d.op})`}
+                          strokeWidth="0.7" strokeLinecap="round"
+                          style={{ animation: `rain-fall ${d.dur}s linear ${d.dly}s infinite`, transformBox:'fill-box', transformOrigin:'top center' }}
+                        />
+                      )
+                    })}
+                    <rect x={wx} y={wy} width={275} height={70} fill="url(#outside-vignette)"/>
+                  </>
+                )}
+              </g>
+            )
+          })()}
+
+          {/* WindowWS.png — sits on the wall surface in front of outside scene */}
+          <image
+            href={windowImg}
+            x={WIN_X} y={WIN_Y}
+            width={WIN_W} height={WIN_H}
+            preserveAspectRatio="none"
+            style={{ pointerEvents: 'none', filter: 'brightness(0.58) contrast(1.10) saturate(0.80)' }}
+          />
+          {/* Ledge shadow — cast downward from the window sill onto the wall */}
+          <defs>
+            <linearGradient id="win-shadow" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor="rgba(0,0,0,0.68)"/>
+              <stop offset="60%"  stopColor="rgba(0,0,0,0.22)"/>
+              <stop offset="100%" stopColor="rgba(0,0,0,0)"/>
+            </linearGradient>
+          </defs>
+          <rect
+            x={WIN_X - 14} y={WIN_Y + WIN_H - 147}
+            width={322} height={60}
+            fill="url(#win-shadow)"
+            style={{ pointerEvents: 'none' }}
+          />
 
           {/* ── SafeWeb — right wall, rendered early so desk/items sit in front ── */}
           {/* 🔧 Position: SAFEWEB_X / SAFEWEB_Y / SAFEWEB_W / SAFEWEB_H above    */}
@@ -543,68 +789,37 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
                 fill="url(#crt-vig)"
                 style={{ pointerEvents:'none' }}/>
 
-              {/* ── Idle: terminal prompt — fades out on hover ───────────────── */}
-              <g style={{ pointerEvents:'none', opacity: hovered ? 0 : 1, transition:'opacity 0.18s ease-out' }}>
-                <g opacity={flickerOp}>
-                  <text
-                    x={SCR.x + SCR.w * 0.08} y={SCR.y + SCR.h * 0.28}
-                    fontFamily="'Share Tech Mono', monospace"
-                    fontSize={fs} fill="#008828" opacity="0.50"
-                    style={{ filter:'drop-shadow(0 0 3px rgba(0,140,30,0.4))' }}>
-                    CALVEY OS v1.0
-                  </text>
-                  <text
-                    x={SCR.x + SCR.w * 0.08} y={SCR.y + SCR.h * 0.52}
-                    fontFamily="'Share Tech Mono', monospace"
-                    fontSize={fs} fill="#00bb44"
-                    style={{ filter:'drop-shadow(0 0 4px rgba(0,180,40,0.45))' }}>
-                    C:\PORTFOLIO&gt;
-                  </text>
-                  {/* Blinking cursor */}
-                  <text
-                    x={SCR.x + SCR.w * 0.08} y={SCR.y + SCR.h * 0.76}
-                    fontFamily="'Share Tech Mono', monospace"
-                    fontSize={fs} fill="#00cc44"
-                    style={{
-                      filter:'drop-shadow(-1px 0 rgba(255,0,40,0.25)) drop-shadow(1px 0 rgba(0,40,255,0.25)) drop-shadow(0 0 5px #00bb44)',
-                      animation:'phosphor-glow 3.2s ease-in-out infinite',
-                    }}>
-                    _
-                  </text>
-                  <text
-                    x={SCR.x + SCR.w * 0.08 + fs * 0.65}
-                    y={SCR.y + SCR.h * 0.76}
-                    fontFamily="'Share Tech Mono', monospace"
-                    fontSize={fs} fill="#00cc44"
-                    style={{
-                      filter:'drop-shadow(0 0 4px #00bb44)',
-                      animation:'cursor-blink 1.1s step-end infinite',
-                    }}>
-                    ▮
-                  </text>
-                </g>
-              </g>
-
-              {/* ── Hover: "CLICK TO ENTER" — fades in on hover ─────────────── */}
-              <g style={{ pointerEvents:'none', opacity: hovered ? 1 : 0, transition:'opacity 0.14s ease-in' }}>
+              {/* ── CLICK TO ENTER — always visible, brighter on hover ───────── */}
+              <g style={{ pointerEvents:'none' }} opacity={flickerOp}>
                 <text
                   x={cx} y={cy - fsB * 0.55}
                   textAnchor="middle" dominantBaseline="middle"
                   fontFamily="'Press Start 2P', monospace"
-                  fontSize={fsB} fill="#00dd44"
+                  fontSize={fsB}
+                  fill={hovered ? '#00dd44' : '#009e32'}
                   filter="url(#chroma)"
-                  style={{ animation:'phosphor-glow 2s ease-in-out infinite' }}
+                  style={{
+                    animation: 'phosphor-glow 2s ease-in-out infinite',
+                    transition: 'fill 0.14s ease',
+                  }}
                 >CLICK</text>
                 <text
                   x={cx} y={cy + fsB * 0.95}
                   textAnchor="middle" dominantBaseline="middle"
                   fontFamily="'Press Start 2P', monospace"
-                  fontSize={fsB} fill="#00dd44"
+                  fontSize={fsB}
+                  fill={hovered ? '#00dd44' : '#009e32'}
                   filter="url(#chroma)"
-                  style={{ animation:'phosphor-glow 2s ease-in-out infinite' }}
+                  style={{
+                    animation: 'phosphor-glow 2s ease-in-out infinite',
+                    transition: 'fill 0.14s ease',
+                  }}
                 >TO ENTER</text>
                 <rect x={SCR.x} y={SCR.y} width={SCR.w} height={SCR.h}
-                  fill="url(#hover-bloom)" style={{ pointerEvents:'none' }}/>
+                  fill="url(#hover-bloom)"
+                  opacity={hovered ? 1 : 0}
+                  style={{ pointerEvents:'none', transition:'opacity 0.14s ease' }}
+                />
               </g>
 
               {/* Dust specs */}
@@ -652,6 +867,17 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
             style={{ pointerEvents: 'none', filter: 'brightness(0.68)' }}
           />
 
+          {/* ── icontp.png — leaning on the boxes, bottom-left ──────────────── */}
+          {/* 🔧 Adjust ICONTP_X / ICONTP_Y / ICONTP_W / ICONTP_H to reposition */}
+          <image
+            href={outsideImg}
+            x={243} y={722}
+            width={75} height={75}
+            preserveAspectRatio="xMidYMid meet"
+            transform="rotate(-5, 281, 760)"
+            style={{ pointerEvents: 'none', mixBlendMode: 'multiply', filter: 'brightness(1.30) contrast(0.90) saturate(0.70) sepia(0.18)' }}
+          />
+
           {/* ── Table corner overlay — sits in front of safe/boxes ──────────── */}
           {/* Full room dimensions so it aligns pixel-perfectly with the background */}
           <image
@@ -660,6 +886,61 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
             preserveAspectRatio="xMidYMid meet"
             style={{ pointerEvents: 'none' }}
           />
+
+          {/* ── Cat eyes — appear under table after visiting the vent ───────── */}
+          {/* 🔧 Position: CAT_X / CAT_Y / CAT_GAP constants above              */}
+          {catEyesVisible && !catEyesClicked && (
+            <g
+              onClick={() => setCatEyesClicked(true)}
+              style={{ cursor: 'pointer' }}
+            >
+              {/* Large invisible hitbox covering the whole cat body area */}
+              <rect
+                x={CAT_X - 65} y={CAT_Y - 35}
+                width={130} height={100}
+                fill="transparent"
+              />
+
+              {/* Eyes */}
+              {[-1, 1].map((side) => {
+                const cx = CAT_X + side * CAT_GAP / 2
+                return (
+                  <g key={side} filter="url(#cat-eye-glow)">
+                    <g style={{ animation: 'cat-fade-in 2s ease-out both' }}>
+                      <g style={{
+                        animation: 'cat-blink 7s ease-in-out 1s infinite',
+                        transformBox: 'fill-box',
+                        transformOrigin: '50% 50%',
+                      }}>
+                        <ellipse cx={cx} cy={CAT_Y} rx={4.5} ry={5.5} fill="rgba(142, 190, 28, 0.55)"
+                          style={{ animation: 'cat-glow-pulse 3.8s ease-in-out infinite' }}/>
+                        <ellipse cx={cx} cy={CAT_Y} rx={1.2} ry={5.0} fill="rgba(8, 6, 4, 0.92)"/>
+                      </g>
+                    </g>
+                  </g>
+                )
+              })}
+            </g>
+          )}
+
+          {/* Number 2 — revealed when cat eyes are clicked, styled like the vent clue */}
+          {catEyesVisible && catEyesClicked && (
+            <text
+              x={CAT_X}
+              y={CAT_Y + 14}
+              textAnchor="middle"
+              fontFamily="'Share Tech Mono', monospace"
+              fontSize={42}
+              fontWeight={700}
+              fill="rgba(140, 140, 140, 0.28)"
+              style={{
+                filter: 'drop-shadow(0 0 6px rgba(160, 160, 160, 0.15))',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                animation: 'cat-fade-in 0.6s ease-out both',
+              }}
+            >2</text>
+          )}
 
           {/* ── About Me book — right side of desk ───────────────────────────── */}
           {/* 🔧 Image: change amBookImg import · Position: BOOK_X/Y/W/H above  */}
@@ -777,7 +1058,7 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
 
             {/* "Contact" label below phone */}
             <text
-              x={PHONE_X + PHONE_W * 0.5 + 7} y={PHONE_Y + PHONE_H - 26}
+              x={PHONE_X + PHONE_W * 0.5 + 7} y={PHONE_Y + PHONE_H - 28}
               textAnchor="middle"
               fontFamily="'Share Tech Mono', monospace"
               fontSize={11}
@@ -860,10 +1141,46 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
         }} />
       )}
 
+      {/* ── Summer bunting — visible June, July, August only ───────────────── */}
+      {/* Adjust via the .summer-bunting CSS class below                        */}
+      {/* getMonth() returns 0–11; 5=Jun, 6=Jul, 7=Aug                        */}
+      {([5,6,7,8,9,10].includes(settings?.previewMonth ?? new Date().getMonth())) && <style>{`
+        .summer-bunting {
+          position: absolute;
+          left: calc(18% + 36px);
+          top: calc(20% - 110px);
+          width: 715px;
+          pointer-events: none;
+          z-index: 5;
+          filter: brightness(0.50) contrast(1.05) saturate(0.85);
+        }
+      `}</style>}
+      {[5, 6, 7].includes(settings?.previewMonth ?? new Date().getMonth()) && (
+        <img src={buntingImg} className="summer-bunting" alt="" />
+      )}
+      {[8, 9, 10].includes(settings?.previewMonth ?? new Date().getMonth()) && (
+        <img src={autumnBuntingImg} className="summer-bunting" alt="" />
+      )}
+
       {/* ── Film grain, scanlines, vignette, dust, chromatic fringe ─────────── */}
       {/* Hidden during vent zoom — HorrorOverlay is position:fixed so it would */}
       {/* float above the zooming room instead of moving with it.               */}
       {!ventZooming && <HorrorOverlay monitorCx={0.498} monitorCy={0.503}/>}
+
+      {/* ── Sound hint — shown until first click unlocks audio ──────────────── */}
+      {!soundReady && (
+        <div style={{
+          position: 'absolute', bottom: 22, left: '50%',
+          transform: 'translateX(-50%)',
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: 10,
+          letterSpacing: '0.22em',
+          color: 'rgba(180,180,180,0.45)',
+          pointerEvents: 'none',
+          whiteSpace: 'nowrap',
+          textShadow: '0 1px 6px rgba(0,0,0,0.8)',
+        }}>🔊 CLICK ANYWHERE FOR SOUND</div>
+      )}
 
       {/* ── Safe combination lock ─────────────────────────────────────────────── */}
       {safeOpen && (
