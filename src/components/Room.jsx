@@ -611,48 +611,13 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
             <rect x={WIN_X + 26} y={WIN_Y + 78} width={275} height={70}/>
           </clipPath>
           {(() => {
-            const activeMonth = settings?.previewMonth ?? new Date().getMonth()
-            const isAutumn    = [8, 9, 10].includes(activeMonth)
+            const activeMonth = settings?.previewMonth ?? new Date().getMonth() // eslint-disable-line no-unused-vars
+            // TODO: use activeMonth for seasonal window scenes when ready
             const wx = WIN_X + 26, wy = WIN_Y + 78
             return (
               <g clipPath="url(#window-outside-clip)" style={{ pointerEvents: 'none' }}>
                 {OUTSIDE_IMG ? (
                   <image href={OUTSIDE_IMG} x={wx} y={wy} width={275} height={70} preserveAspectRatio="xMidYMid slice"/>
-                ) : isAutumn ? (
-                  /* ── Autumn outside ─────────────────────────────────────── */
-                  <>
-                    {/* Clear daytime autumn sky */}
-                    <rect x={wx} y={wy} width={275} height={70} fill="#7ab8d4"/>
-                    {/* Lighter sky near top */}
-                    <rect x={wx} y={wy} width={275} height={25} fill="rgba(180,220,245,0.45)"/>
-                    {/* Distant treeline — dark green silhouette */}
-                    <rect x={wx} y={wy + 44} width={275} height={26} fill="#2d4a28"/>
-                    {/* Ground — earthy brown */}
-                    <rect x={wx} y={wy + 58} width={275} height={12} fill="#5a3d1a"/>
-                    {/* Leaves blowing in wind — outer g drifts left, inner ellipse spins */}
-                    {AUTUMN_LEAVES.map((l, i) => (
-                      <g
-                        key={i}
-                        style={{
-                          animation: `${l.fast ? 'leaf-drift-fast' : 'leaf-drift'} ${l.dur}s linear ${l.dly}s infinite`,
-                          transform: `translate(${wx + l.x}px, ${wy + l.y}px)`,
-                        }}
-                      >
-                        <ellipse
-                          cx={0} cy={0}
-                          rx={l.rx} ry={l.ry}
-                          fill={`${l.color},${0.65 + (i % 4) * 0.08})`}
-                          style={{
-                            animation: `leaf-spin ${l.dur * 0.35}s linear ${l.dly}s infinite`,
-                            transformBox: 'fill-box',
-                            transformOrigin: 'center',
-                          }}
-                        />
-                      </g>
-                    ))}
-                    {/* Edge vignette */}
-                    <rect x={wx} y={wy} width={275} height={70} fill="url(#outside-vignette)"/>
-                  </>
                 ) : (
                   /* ── Rainy outside (default) ────────────────────────────── */
                   <>
@@ -1141,26 +1106,10 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
         }} />
       )}
 
-      {/* ── Summer bunting — visible June, July, August only ───────────────── */}
-      {/* Adjust via the .summer-bunting CSS class below                        */}
-      {/* getMonth() returns 0–11; 5=Jun, 6=Jul, 7=Aug                        */}
-      {([5,6,7,8,9,10].includes(settings?.previewMonth ?? new Date().getMonth())) && <style>{`
-        .summer-bunting {
-          position: absolute;
-          left: calc(18% + 36px);
-          top: calc(20% - 110px);
-          width: 715px;
-          pointer-events: none;
-          z-index: 5;
-          filter: brightness(0.50) contrast(1.05) saturate(0.85);
-        }
-      `}</style>}
-      {[5, 6, 7].includes(settings?.previewMonth ?? new Date().getMonth()) && (
-        <img src={buntingImg} className="summer-bunting" alt="" />
-      )}
-      {[8, 9, 10].includes(settings?.previewMonth ?? new Date().getMonth()) && (
-        <img src={autumnBuntingImg} className="summer-bunting" alt="" />
-      )}
+      {/* ── Seasonal decorations (buntings removed for now) ─────────────────── */}
+      {/* TODO: re-enable per-season visuals here when ready                    */}
+      {/* Summer months: [5,6,7] — Autumn months: [8,9,10]                     */}
+      {/* previewMonth is controlled via admin panel                            */}
 
       {/* ── Film grain, scanlines, vignette, dust, chromatic fringe ─────────── */}
       {/* Hidden during vent zoom — HorrorOverlay is position:fixed so it would */}
