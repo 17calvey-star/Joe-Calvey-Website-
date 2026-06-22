@@ -1,114 +1,156 @@
-# Joe Calvey Portfolio — Architecture
+# Joe Calvey Portfolio — Claude Guide
 
-## Overview
-Personal portfolio for Joe Calvey (Creative Advertising student). Dark pixel-art prison room as the landing scene. Clicking the CRT computer triggers a TV static transition to the portfolio/work view. Built with React + Vite, Framer Motion, Tailwind CSS v4. Deployed to Netlify via GitHub.
+## Start Here
 
-## Visual Concept
-- Full-viewport dark, dingy room (CSS-drawn, pixel art aesthetic)
-- Back wall with brick texture, side walls, ceiling, floor all visible
-- Pixel art CRT computer centered on back wall — clickable to enter portfolio
-- On click: TV static animation (canvas-based) transitions to clean portfolio view
-- Portfolio view is clean and readable (not pixel art — deliberate contrast)
-- Style reference: Clover Pit game (dark, muted, earthy palette)
-- The room scene is currently CSS-drawn. It is designed to be replaced with an actual pixel art sprite/illustration later — see `src/components/Room.jsx`
+**Tech stack:** Vite + React (JSX), Tailwind, no TypeScript.  
+**Dev server:** `npm run dev` from `~/Documents/my-portfolio` (port 5173).  
+**Admin panel:** Ctrl+Shift+A in dev. Tabs: Projects, About Me, Settings, Contact, Deploy, To-do.  
+**Data files** (never hot-reloaded by Vite — ignored in watcher):
+- `src/data/projects.json` — project list
+- `src/data/settings.json` — site settings, about content, contact info
+- `src/content.json` — per-project case study text
+- `src/data/todos.json` — admin to-do list
 
-## Tech Stack
-- React 19 + Vite
-- Framer Motion (animations, hover states)
-- Tailwind CSS v4 (via @tailwindcss/vite)
-- Google Fonts: Press Start 2P (pixel art), Inter (portfolio UI), Share Tech Mono (admin/labels)
-- Deployed to Netlify, GitHub auto-deploy
+**All tunable constants** (audio volumes, seasons, design width) → `src/config.js`
 
-## File Structure
+---
+
+## Key Files
+
+| File | What it does |
+|---|---|
+| `src/App.jsx` | Root. View routing, rain audio, admin shortcut, ntfy notifications. |
+| `src/components/Room.jsx` | Homepage pixel-art room SVG. All interactive objects. ~1150 lines. |
+| `src/components/Desktop.jsx` | Portfolio OS desktop (windows, icons). |
+| `src/components/Admin.jsx` | Admin panel. All tabs. Saves via `/api/*` routes in vite.config.js. |
+| `src/components/AboutMe.jsx` | Book-style about page. Reads from `settings.about`. |
+| `src/components/Contact.jsx` | Contact page. Reads from `settings.contact`. |
+| `src/components/VentPage.jsx` | Vent/puzzle page. |
+| `src/components/SafeLock.jsx` | Safe combination puzzle. |
+| `src/components/StaticTransition.jsx` | TV static transition (room ↔ desktop). |
+| `src/components/HorrorOverlay.jsx` | Film grain / scanline / vignette overlay. |
+| `src/config.js` | **All tunable constants** — edit this first. |
+| `vite.config.js` | All `/api/*` dev-server routes (save, upload, deploy, todos). |
+
+---
+
+## Scale System
+
+Every component receives `scale = containerWidth / DESIGN_WIDTH` (1280).  
+Multiply all pixel values by `scale` — never hardcode px in components.  
+`DESIGN_WIDTH` is exported from `src/config.js` (and re-exported from `App.jsx`).
+
+---
+
+## Views / Routing
+
+Views: `'room'` | `'desktop'` | `'about'` | `'contact'` | `'vent'`
+
+| View | URL | Entry point |
+|---|---|---|
+| room | `/` | default |
+| desktop | `/portfolio` | click computer → TV static transition |
+| about | `/about` | click mug/book on desk |
+| contact | `/contact` | click phone on desk |
+| vent | `/vent` | click vent fan |
+
+Room stays rendered as backdrop when about/contact/vent panels are open.
+
+---
+
+## Audio
+
+All volumes in `src/config.js`:
+
+```js
+VOL_RAIN_ROOM    = 0.18   // App.jsx — rain on homepage
+VOL_RAIN_DESKTOP = 0.07   // App.jsx — rain on desktop
+VOL_RAIN_VENT    = 0.05   // App.jsx — rain in vents
+VOL_FRIDGE       = 0.25   // Room.jsx — fridge hum
+VOL_STATIC       = 0.25   // StaticTransition.jsx — TV static
 ```
-src/
-  App.jsx                    Main app — state machine, ntfy, analytics, keyboard shortcut
-  main.jsx                   Entry point
-  content.json               Project text (problem/insight/solution per project ID)
-  data/
-    projects.json            Project list — title, brief, tags, year, order, coverImage
-    settings.json            Site settings — ntfy topic, GoatCounter code, site title
-    todos.json               Admin to-do list
-  components/
-    Room.jsx                 Pixel art prison room scene (CSS-drawn)
-    Computer.jsx             Clickable CRT computer with idle flicker and hover state
-    StaticTransition.jsx     Canvas-based TV static transition overlay
-    Portfolio.jsx            Clean work view — project grid + ProjectModal
-    ProjectModal.jsx         Individual project detail modal (cover, text, work images)
-    Admin.jsx                Hidden admin panel (Ctrl+Shift+A, dev only)
-  assets/
-    images/
-      projects/
-        {id}/
-          cover.png          Project cover image (uploaded via admin)
-          work/              Work images (uploaded via admin)
+
+Rain starts on first user gesture (click/key) to satisfy browser autoplay policy.  
+Fridge hum is managed inside Room.jsx with the same gesture-wait pattern.
+
+---
+
+## Room Objects (Room.jsx)
+
+Constants near the top of Room.jsx control position/size of every object:
+
+| Constant | Object |
+|---|---|
+| `SCR` | CRT screen bounds (x, y, w, h) |
+| `WIN_X/Y/W/H` | Barred window |
+| `FAN_CX/CY/R/SPEED` | Vent fan |
+| `BOOK_X/Y/W/H` | About Me book/mug |
+| `PHONE_X/Y/W/H` | Contact phone |
+| `SAFEWEB_X/Y/W/H` | Safe on wall |
+| `BOXES_X/Y/W/H` | Boxes bottom-left |
+| `TABLE_X/Y/W/H` | Table overlay |
+| `CAT_X/Y/GAP` | Hidden cat eyes (post-vent) |
+
+Images imported at top of Room.jsx — swap image file by changing the import.
+
+---
+
+## Seasonal System
+
+```js
+// src/config.js
+SUMMER_MONTHS = [5, 6, 7]   // Jun Jul Aug
+AUTUMN_MONTHS = [8, 9, 10]  // Sep Oct Nov
 ```
 
-## State Flow (App.jsx)
-```
-view: 'room' | 'portfolio'
-transitioning: boolean
+Active month: `settings?.previewMonth ?? new Date().getMonth()`  
+`previewMonth` is set in Admin → Settings → Season Preview (stored in localStorage).  
+Currently all months show the same rainy window scene. Seasonal window variation is a TODO — `AUTUMN_LEAVES` array in Room.jsx is ready but not rendered.
 
-room → [click computer] → transitioning=true → StaticTransition plays
-  → onComplete → view='portfolio', transitioning=false
+---
 
-portfolio → [click back] → transitioning=true → StaticTransition plays
-  → onComplete → view='room', transitioning=false
-```
+## Data Saving (vite.config.js)
 
-## Admin Panel
-- Trigger: Ctrl+Shift+A (only useful in dev — API routes don't exist on Netlify)
-- Tabs: Projects | Settings | Deploy | To-do
-- Draggable panel (drag the title bar)
-- All saves call `/api/*` routes which write to `src/data/*.json` and `src/content.json`
-- **Does nothing on the live site** — the API routes only exist in the Vite dev server plugin
+All API routes are in `adminApiPlugin()` in `vite.config.js`:
 
-## Vite Dev Plugin (vite.config.js)
-The `adminApiPlugin()` function intercepts `/api/*` requests during `npm run dev` only (`apply: 'serve'`). Routes:
-- `GET  /api/admin-data`        — reads all data files, scans for uploaded images
-- `POST /api/save-projects`     — writes projects.json
-- `POST /api/save-settings`     — writes settings.json
-- `POST /api/save-content`      — writes content.json (per-project text)
-- `POST /api/upload-image`      — saves cover or work images to assets/images/projects/
-- `DELETE /api/delete-work-image`
-- `GET  /api/todos`             — reads todos.json
-- `POST /api/todos`             — writes todos.json
-- `GET  /api/git-status`        — runs git status/log
-- `POST /api/deploy`            — runs git add -A && git commit && git push
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/admin-data` | GET | Load all data files + project image inventory |
+| `/api/save-projects` | POST | Write `projects.json` |
+| `/api/save-settings` | POST | Write `settings.json` (includes about + contact) |
+| `/api/save-content` | POST | Write per-project case study to `content.json` |
+| `/api/upload-image` | POST | Save project cover/work image to `src/assets/images/projects/` |
+| `/api/delete-work-image` | DELETE | Delete a project work image |
+| `/api/upload-about-photo` | POST | Save photo to `public/about-photos/` |
+| `/api/delete-about-photo` | DELETE | Delete an about photo |
+| `/api/upload-pdf` | POST | Save PDF to `public/pdfs/` |
+| `/api/todos` | GET/POST | Read/write todos |
+| `/api/git-status` | GET | Git status for deploy tab |
+| `/api/deploy` | POST | `git add -A && git commit && git push`, optionally trigger Netlify hook |
 
-Vite's file watcher is configured to ignore data JSON files so admin saves don't trigger hot-reload.
+`PROJECT_ROOT` is derived from `import.meta.url` in vite.config.js — always correct regardless of where Vite is launched from.
 
-## Data Architecture
-All content lives in JSON files. In dev, App.jsx fetches fresh data from `/api/admin-data` on mount to avoid Vite's module cache serving stale JSON. In production, JSON is statically imported at build time (always fresh since Netlify rebuilds from scratch).
+---
 
-## Image Loading
-Images are loaded via Vite's `import.meta.glob`. This means:
-- **New images need a dev server restart to appear** (Vite re-scans globs at startup)
-- At build time, all matched images are bundled with hashed filenames
-- Cover images: `src/assets/images/projects/{id}/cover.{png,jpg,jpeg,webp}`
-- Work images: `src/assets/images/projects/{id}/work/*.{png,jpg,jpeg,webp}`
+## About Me Page
+
+`AboutMe.jsx` reads from `settings.about`:
+- `heading`, `photosHeading`, `bio`, `skills`, `cvLabel`, `cvUrl`, `photos[]`
+- CV section hidden if `cvUrl` is empty
+- Skills section hidden if `skills` is empty
+- Photos default to `PHOTOS` constant in AboutMe.jsx if `settings.about.photos` is empty
+- Uploaded photos go to `public/about-photos/`, referenced as `/about-photos/{filename}`
+
+---
+
+## Deployment
+
+Deploy tab in Admin: commits all changes and pushes to git remote.  
+Netlify auto-deploys on push if connected. Or set `settings.deploy.netlifyHookUrl` for an explicit trigger.
+
+---
 
 ## Analytics & Notifications
-- **GoatCounter**: injected as `<script>` tag when `settings.analytics.goatcounterSiteCode` is set
-- **ntfy.sh**: fires once on page load, **only on the live site** (skipped in dev). Sends visitor location (ipapi.co), network type, referrer, device. Topic set in `settings.notifications.ntfyTopic`
-- ipapi.co is used for location (not ipinfo.io — that is CORS-blocked from the browser)
 
-## Netlify Deployment
-- `public/_redirects` contains `/* /index.html 200` for SPA routing
-- Auto-deploys when `main` branch is pushed to GitHub
-- The deploy button in the admin panel runs `git add -A && git commit && git push`
-
-## Conventions
-- All sizes in the Room and Computer components use explicit px values — no Tailwind for the visual scene
-- `image-rendering: pixelated` on all pixel art elements
-- No border-radius on structural room/computer elements (pixel art = sharp edges)
-- Portfolio UI can use Tailwind and standard CSS — it's deliberately non-pixel-art
-- ntfy notification must use URL query params (not custom headers) to avoid CORS preflight
-- Admin panel is **never** shown in production — it requires the local Vite API to function
-
-## Outstanding / Future Work
-- Replace CSS room with an actual pixel art sprite illustration
-- Add more room props/decorations (accessible via admin settings later)
-- Add project filtering by tag in portfolio view
-- Consider adding a "CV/about" section accessible from the portfolio
-- Set up GitHub repo and connect Netlify
+- **GoatCounter**: set `settings.analytics.goatcounterSiteCode` in Admin → Settings.
+- **ntfy.sh**: set `settings.notifications.ntfyTopic` in `settings.json`. Sends visit notification with IP geolocation + network type. Dev-only suppressed.

@@ -17,5 +17,8 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      'no-use-before-define': ['error', { functions: false, classes: false, variables: true }],
+    },
   },
 ])

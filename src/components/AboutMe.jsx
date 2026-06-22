@@ -140,6 +140,15 @@ export default function AboutMe({ onClose, settings }) {
   const [mounted,   setMounted]   = useState(false)
   const [closeHov, setCloseHov] = useState(false)
 
+  const about = settings?.about || {}
+  const heading       = about.heading       || 'About Me'
+  const photosHeading = about.photosHeading || 'Photos'
+  const bio           = about.bio           || "Hi, I'm Joe Calvey — a creative designer and developer."
+  const skills        = about.skills        || ''
+  const cvLabel       = about.cvLabel       || '↓ download cv.pdf'
+  const cvUrl         = about.cvUrl         || ''
+  const photos        = (about.photos && about.photos.length > 0) ? about.photos : PHOTOS
+
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 60)
     return () => clearTimeout(t)
@@ -236,54 +245,57 @@ export default function AboutMe({ onClose, settings }) {
               paddingBottom: 10,
               borderBottom: '2px solid rgba(105,60,15,0.16)',
               animation: 'page-item 0.38s ease-out 200ms both',
-            }}>About Me</div>
+            }}>{heading}</div>
 
             <Section label="bio" delay={280}>
               <p style={{
                 fontFamily: "'Inter', -apple-system, sans-serif",
                 fontSize: 13, lineHeight: 1.80, color: '#362210', margin: 0,
+                whiteSpace: 'pre-wrap',
               }}>
-                Hi, I&rsquo;m Joe Calvey &mdash; a creative designer and developer.
-                This is a placeholder. Add your personal bio, background,
-                and what drives your work here.
+                {bio}
               </p>
             </Section>
 
-            <Section label="cv / download" delay={360}>
-              <a
-                href="#" download
-                style={{
-                  display: 'inline-block',
-                  fontFamily: "'Share Tech Mono', monospace",
-                  fontSize: 10, letterSpacing: '0.14em',
-                  color: 'rgba(95,48,10,0.68)',
-                  border: '1px solid rgba(130,80,16,0.24)',
-                  padding: '6px 16px', textDecoration: 'none',
-                  transition: 'all 0.14s',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.color = '#3e1400'
-                  e.currentTarget.style.borderColor = 'rgba(130,80,16,0.52)'
-                  e.currentTarget.style.background = 'rgba(130,80,16,0.05)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.color = 'rgba(95,48,10,0.68)'
-                  e.currentTarget.style.borderColor = 'rgba(130,80,16,0.24)'
-                  e.currentTarget.style.background = 'transparent'
-                }}
-              >↓ download cv.pdf</a>
-            </Section>
+            {cvUrl && (
+              <Section label="cv / download" delay={360}>
+                <a
+                  href={cvUrl} download
+                  style={{
+                    display: 'inline-block',
+                    fontFamily: "'Share Tech Mono', monospace",
+                    fontSize: 10, letterSpacing: '0.14em',
+                    color: 'rgba(95,48,10,0.68)',
+                    border: '1px solid rgba(130,80,16,0.24)',
+                    padding: '6px 16px', textDecoration: 'none',
+                    transition: 'all 0.14s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.color = '#3e1400'
+                    e.currentTarget.style.borderColor = 'rgba(130,80,16,0.52)'
+                    e.currentTarget.style.background = 'rgba(130,80,16,0.05)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.color = 'rgba(95,48,10,0.68)'
+                    e.currentTarget.style.borderColor = 'rgba(130,80,16,0.24)'
+                    e.currentTarget.style.background = 'transparent'
+                  }}
+                >{cvLabel}</a>
+              </Section>
+            )}
 
-            <Section label="skills" delay={520}>
-              <p style={{
-                fontFamily: "'Inter', -apple-system, sans-serif",
-                fontSize: 12, lineHeight: 1.76,
-                color: 'rgba(52,32,12,0.60)', margin: 0,
-              }}>
-                Placeholder &mdash; add design tools, software,
-                and disciplines here.
-              </p>
-            </Section>
+            {skills && (
+              <Section label="skills" delay={520}>
+                <p style={{
+                  fontFamily: "'Inter', -apple-system, sans-serif",
+                  fontSize: 12, lineHeight: 1.76,
+                  color: 'rgba(52,32,12,0.60)', margin: 0,
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {skills}
+                </p>
+              </Section>
+            )}
 
           </div>
         </div>
@@ -347,16 +359,16 @@ export default function AboutMe({ onClose, settings }) {
             paddingBottom: 9,
             borderBottom: '1px solid rgba(105,60,15,0.14)',
             animation: 'page-item 0.38s ease-out 400ms both',
-          }}>Photos</div>
+          }}>{photosHeading}</div>
 
-          {/* Polaroid grid — add entries to the PHOTOS array at the top */}
+          {/* Polaroid grid */}
           <div style={{
             display: 'flex',
             flexWrap: 'wrap',
             gap: 18,
             alignContent: 'flex-start',
           }}>
-            {PHOTOS.map((p, i) => (
+            {photos.map((p, i) => (
               <Polaroid key={i} photo={p} delay={460 + i * 65} />
             ))}
           </div>

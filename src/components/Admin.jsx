@@ -738,6 +738,154 @@ function TodoTab() {
   )
 }
 
+// ── About Me tab ─────────────────────────────────────────────────────────────
+
+function AboutTab({ settings, onChange }) {
+  const [local,        setLocal]       = useState(settings?.about || {})
+  const [saving,       setSaving]      = useState(false)
+  const [status,       setStatus]      = useState('')
+  const [uploading,    setUploading]   = useState(false)
+  const fileRef = useRef(null)
+
+  useEffect(() => { setLocal(settings?.about || {}) }, [settings])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const next = { ...settings, about: local }
+      await api('/api/save-settings', { method: 'POST', body: JSON.stringify({ settings: next }) })
+      onChange({ settings: next })
+      setStatus('Saved')
+      setTimeout(() => setStatus(''), 2000)
+    } catch (e) {
+      setStatus('Error: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  const set = (key, val) => setLocal(a => ({ ...a, [key]: val }))
+
+  const photos = local.photos || []
+
+  const uploadPhoto = async (file) => {
+    setUploading(true)
+    try {
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader()
+        r.onload = e => res(e.target.result)
+        r.onerror = rej
+        r.readAsDataURL(file)
+      })
+      const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+      const result = await api('/api/upload-about-photo', {
+        method: 'POST',
+        body: JSON.stringify({ filename, dataUrl }),
+      })
+      const newPhoto = { src: result.url, caption: '', rotate: (Math.random() * 6 - 3).toFixed(1) * 1 }
+      setLocal(a => ({ ...a, photos: [...(a.photos || []), newPhoto] }))
+      setStatus('Photo uploaded — click Save to persist')
+      setTimeout(() => setStatus(''), 3000)
+    } catch (e) {
+      setStatus('Upload error: ' + e.message)
+    }
+    setUploading(false)
+  }
+
+  const removePhoto = async (idx) => {
+    const photo = photos[idx]
+    if (photo?.src) {
+      const filename = photo.src.split('/').pop()
+      await api('/api/delete-about-photo', { method: 'DELETE', body: JSON.stringify({ filename }) }).catch(() => {})
+    }
+    setLocal(a => ({ ...a, photos: (a.photos || []).filter((_, i) => i !== idx) }))
+  }
+
+  const setPhotoField = (idx, key, val) => {
+    setLocal(a => {
+      const next = [...(a.photos || [])]
+      next[idx] = { ...next[idx], [key]: val }
+      return { ...a, photos: next }
+    })
+  }
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', padding: 20, maxWidth: 540 }}>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          HEADINGS
+        </div>
+        <Field label="PAGE HEADING"   value={local.heading       || ''} onChange={v => set('heading',       v)} placeholder="About Me" />
+        <Field label="PHOTOS HEADING" value={local.photosHeading || ''} onChange={v => set('photosHeading', v)} placeholder="Photos" />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          BIO
+        </div>
+        <Field label="BIO TEXT" value={local.bio || ''} onChange={v => set('bio', v)}
+          multiline placeholder="Hi, I'm Joe Calvey — a creative designer and developer…" />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          SKILLS
+        </div>
+        <Field label="SKILLS TEXT" value={local.skills || ''} onChange={v => set('skills', v)}
+          multiline placeholder="Figma, React, Unreal Engine…" />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          CV / DOWNLOAD
+        </div>
+        <Field label="BUTTON LABEL" value={local.cvLabel || ''} onChange={v => set('cvLabel', v)} placeholder="↓ download cv.pdf" />
+        <Field label="CV URL"       value={local.cvUrl   || ''} onChange={v => set('cvUrl',   v)} placeholder="/pdfs/cv.pdf  or  https://…" />
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginTop: -8 }}>
+          Leave blank to hide the CV button.
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 10, fontFamily: FONT, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 12 }}>
+          PHOTOS (right page of book)
+        </div>
+
+        {/* Existing photos */}
+        {photos.map((photo, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 12, padding: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 4 }}>
+            {/* Thumbnail */}
+            <div style={{ width: 60, height: 46, flexShrink: 0, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', borderRadius: 2 }}>
+              {photo.src && <img src={photo.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+            </div>
+            {/* Fields */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Field label="CAPTION" value={photo.caption || ''} onChange={v => setPhotoField(idx, 'caption', v)} placeholder="optional caption" />
+              <Field label="TILT (deg)" value={String(photo.rotate ?? 0)} onChange={v => setPhotoField(idx, 'rotate', parseFloat(v) || 0)} placeholder="-3 to 3" />
+            </div>
+            <Btn danger onClick={() => removePhoto(idx)} style={{ flexShrink: 0 }}>✕</Btn>
+          </div>
+        ))}
+
+        {/* Upload button */}
+        <input
+          ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => { if (e.target.files[0]) uploadPhoto(e.target.files[0]); e.target.value = '' }}
+        />
+        <Btn onClick={() => fileRef.current?.click()} disabled={uploading}>
+          {uploading ? 'Uploading…' : '+ Add Photo'}
+        </Btn>
+        <div style={{ fontSize: 11, fontFamily: FONT, color: 'rgba(255,255,255,0.2)', marginTop: 6 }}>
+          After uploading, click Save About Me to apply changes.
+        </div>
+      </div>
+
+      {status && <div style={{ marginBottom: 12, fontSize: 11, fontFamily: FONT, color: ACCENT }}>{status}</div>}
+      <Btn accent onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save About Me'}</Btn>
+    </div>
+  )
+}
+
 // ── Contact tab ───────────────────────────────────────────────────────────────
 
 function ContactTab({ settings, onChange }) {
@@ -813,6 +961,7 @@ function ContactTab({ settings, onChange }) {
 
 const TABS = [
   { id: 'projects', label: 'Projects' },
+  { id: 'about',    label: 'About Me' },
   { id: 'settings', label: 'Settings' },
   { id: 'contact',  label: 'Contact' },
   { id: 'deploy',   label: 'Deploy' },
@@ -957,6 +1106,12 @@ export default function Admin({ projects, settings, content, onClose, onChange }
               projects={adminData.projects}
               content={adminData.content}
               hasImages={adminData.hasImages}
+              onChange={handleChange}
+            />
+          )}
+          {tab === 'about' && (
+            <AboutTab
+              settings={adminData.settings}
               onChange={handleChange}
             />
           )}

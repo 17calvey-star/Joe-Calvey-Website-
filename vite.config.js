@@ -48,8 +48,9 @@ function adminApiPlugin() {
       const SETTINGS  = p('src/data/settings.json')
       const CONTENT   = p('src/content.json')
       const TODOS     = p('src/data/todos.json')
-      const IMG_DIR   = p('src/assets/images/projects')
-      const PDF_DIR   = p('public/pdfs')
+      const IMG_DIR        = p('src/assets/images/projects')
+      const PDF_DIR        = p('public/pdfs')
+      const ABOUT_PHOTO_DIR = p('public/about-photos')
 
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith('/api/')) return next()
@@ -151,6 +152,29 @@ function adminApiPlugin() {
           } catch (e) { return jsonRes(res, { error: e.message }, 500) }
         }
 
+        // POST /api/upload-about-photo — { filename, dataUrl } → public/about-photos/{filename}
+        if (url === '/api/upload-about-photo' && req.method === 'POST') {
+          try {
+            const { filename, dataUrl } = await readBody(req)
+            const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '')
+            const buf = Buffer.from(base64, 'base64')
+            fs.mkdirSync(ABOUT_PHOTO_DIR, { recursive: true })
+            const destPath = path.join(ABOUT_PHOTO_DIR, filename)
+            fs.writeFileSync(destPath, buf)
+            return jsonRes(res, { ok: true, url: `/about-photos/${filename}` })
+          } catch (e) { return jsonRes(res, { error: e.message }, 500) }
+        }
+
+        // DELETE /api/delete-about-photo — { filename }
+        if (url === '/api/delete-about-photo' && req.method === 'DELETE') {
+          try {
+            const { filename } = await readBody(req)
+            const filePath = path.join(ABOUT_PHOTO_DIR, filename)
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+            return jsonRes(res, { ok: true })
+          } catch (e) { return jsonRes(res, { error: e.message }, 500) }
+        }
+
         // POST /api/upload-pdf — saves to public/pdfs/{projectId}.pdf
         if (url === '/api/upload-pdf' && req.method === 'POST') {
           try {
@@ -243,7 +267,9 @@ function adminApiPlugin() {
 }
 
 export default defineConfig({
+  root: PROJECT_ROOT,
   server: {
+    port: 5173,
     watch: {
       // Ignore data files so Vite doesn't hot-reload when the admin panel saves.
       // Paths must be absolute — PROJECT_ROOT is set via import.meta.url above.

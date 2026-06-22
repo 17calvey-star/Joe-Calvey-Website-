@@ -32,6 +32,15 @@
       "y": 0
     }
   },
+  "about": {
+    "heading": "About Me",
+    "photosHeading": "Photos",
+    "bio": "Hi, I'm Joe Calvey — a creative designer and developer. This is a placeholder. Add your personal bio, background, and what drives your work here.",
+    "skills": "Placeholder — add design tools, software, and disciplines here.",
+    "cvLabel": "↓ download cv.pdf",
+    "cvUrl": "",
+    "photos": []
+  },
   "contact": {
     "name": "Joe Calvey",
     "email": "17Calvey@gmail.com",

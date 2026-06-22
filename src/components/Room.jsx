@@ -10,14 +10,10 @@ import safeOpenedImg  from '../assets/images/SafeOpened1.png'
 import tableOverlayImg from '../assets/images/Tableoverlay.png'
 import contactPhoneImg from '../assets/images/ContactPhone.png'
 import windowImg       from '../assets/images/WindowWS.png'
-import buntingImg      from '../assets/images/SummerBunting.png'
-import autumnBuntingImg from '../assets/images/AutumnBunting.png'
 import outsideImg      from '../assets/images/icontp.png'
 import fridgeAmbient from '../assets/audio/ambient/fridge.mp3'
-
-// ── Ambient audio ─────────────────────────────────────────────────────────────
-// Volume for the fridge hum loop. Adjust here to taste (0 = silent, 1 = full).
-const AMBIENT_VOLUME = 0.25
+import phoneRingSfx  from '../assets/audio/sfx/WebsitePhone.mp3'
+import { VOL_FRIDGE, VOL_PHONE_HOVER } from '../config'
 
 // ── Animations ────────────────────────────────────────────────────────────────
 const ANIM = `
@@ -441,9 +437,10 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
   const [soundReady,     setSoundReady]     = useState(false)
   const [catEyesVisible, setCatEyesVisible] = useState(false)
   const [catEyesClicked, setCatEyesClicked] = useState(false)
-  const timerRef    = useRef(null)
-  const ambientRef  = useRef(null)
+  const timerRef     = useRef(null)
+  const ambientRef   = useRef(null)
   const ventTimerRef = useRef(null)
+  const phoneRingRef = useRef(null)
 
   // Reset zoom state when room becomes active again (returning from vent)
   useEffect(() => {
@@ -472,7 +469,7 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
   useEffect(() => {
     const audio = ambientRef.current
     if (!audio) return
-    const target = isActive ? AMBIENT_VOLUME : 0.08
+    const target = isActive ? VOL_FRIDGE : 0.08
     const step = () => {
       const diff = target - audio.volume
       if (Math.abs(diff) < 0.005) { audio.volume = target; return }
@@ -498,9 +495,9 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
       setSoundReady(true)
       let v = 0
       const step = () => {
-        v = Math.min(v + 0.01, AMBIENT_VOLUME)
+        v = Math.min(v + 0.01, VOL_FRIDGE)
         audio.volume = v
-        if (v < AMBIENT_VOLUME) setTimeout(step, 40)
+        if (v < VOL_FRIDGE) setTimeout(step, 40)
       }
       step()
     }
@@ -995,8 +992,21 @@ export default function Room({ onComputerClick, onAboutClick, onContactClick, on
           <g
             style={{ cursor:'pointer' }}
             onClick={onContactClick}
-            onMouseEnter={() => setContactHovered(true)}
-            onMouseLeave={() => setContactHovered(false)}
+            onMouseEnter={() => {
+              setContactHovered(true)
+              // Play phone ring SFX once per hover — no overlap spam
+              const prev = phoneRingRef.current
+              if (prev && !prev.paused) return
+              const sfx = new Audio(phoneRingSfx)
+              sfx.volume = VOL_PHONE_HOVER
+              phoneRingRef.current = sfx
+              sfx.play().catch(() => {})
+            }}
+            onMouseLeave={() => {
+              setContactHovered(false)
+              const sfx = phoneRingRef.current
+              if (sfx) { sfx.pause(); sfx.currentTime = 0 }
+            }}
           >
             {/* Transparent hit rect — full clickable area */}
             <rect x={PHONE_X} y={PHONE_Y} width={PHONE_W} height={PHONE_H} fill="transparent" />

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import rainAmbient from './assets/audio/ambient/WebsiteRain.mp3'
 import projectsData from './data/projects.json'
 import settingsData from './data/settings.json'
 import contentData from './content.json'
@@ -10,19 +11,98 @@ import Contact   from './components/Contact'
 import VentPage  from './components/VentPage'
 import StaticTransition from './components/StaticTransition'
 import Admin     from './components/Admin'
+import MobileApp from './components/MobileApp'
+import { DESIGN_WIDTH, VOL_RAIN_ROOM, VOL_RAIN_DESKTOP, VOL_RAIN_VENT } from './config'
 
-// ── Scale system ──────────────────────────────────────────────────────────────
-// All components receive a `scale` prop derived from container width vs design
-// width. Never hardcode pixel values in components — always multiply by scale.
-export const DESIGN_WIDTH = 1280
+// Key images to preload before revealing the room
+import _roomBg    from './assets/images/RB.png'
+import _windowImg from './assets/images/WindowWS.png'
+import _tableImg  from './assets/images/Tableoverlay.png'
+import _safeImg   from './assets/images/SafeWeb1.png'
+import _phoneImg  from './assets/images/ContactPhone.png'
+import _bookImg   from './assets/images/AMmug.png'
+import _fanImg    from './assets/images/FAN.png'
+import _boxesImg  from './assets/images/Boxes.png'
+
+const PRELOAD_SRCS = [_roomBg, _windowImg, _tableImg, _safeImg, _phoneImg, _bookImg, _fanImg, _boxesImg]
+
+function preloadImages(srcs) {
+  return Promise.all(srcs.map(src => new Promise(resolve => {
+    const img = new Image()
+    img.onload = img.onerror = resolve
+    img.src = src
+  })))
+}
+
+const FLICKER_CSS = `
+@keyframes loading-flicker {
+  0%   { opacity: 1; }
+  22%  { opacity: 1; }
+  28%  { opacity: 0.55; }
+  33%  { opacity: 0.9; }
+  42%  { opacity: 0.2; }
+  50%  { opacity: 0.75; }
+  60%  { opacity: 0.1; }
+  72%  { opacity: 0.5; }
+  85%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+`
+
+// 'loading' → assets pending  |  'revealing' → flicker animation  |  'done' → overlay removed
+function LoadingOverlay({ state, onAnimationEnd }) {
+  if (state === 'done') return null
+  return (
+    <>
+      <style>{FLICKER_CSS}</style>
+      <div
+        onAnimationEnd={onAnimationEnd}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: '#000',
+          animation: state === 'revealing' ? 'loading-flicker 1.1s ease-out forwards' : 'none',
+          pointerEvents: state === 'revealing' ? 'none' : 'auto',
+        }}
+      />
+    </>
+  )
+}
+
+export { DESIGN_WIDTH }
 
 export default function App() {
   const containerRef  = useRef(null)
+  const rainRef       = useRef(null)
   const [scale, setScale]           = useState(1)
   const [isTouchDevice, setTouch]   = useState(false)
+  const [isMobile, setIsMobile]     = useState(() => window.innerWidth < 768)
+  const [loadState, setLoadState]   = useState(() =>
+    sessionStorage.getItem('intro-played') ? 'done' : 'loading'
+  )
 
   useEffect(() => {
     setTouch(window.matchMedia('(pointer: coarse)').matches)
+  }, [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Preload key room assets then trigger flicker reveal (skipped if already played)
+  useEffect(() => {
+    if (sessionStorage.getItem('intro-played')) return
+    const TIMEOUT = 5000
+    let cancelled = false
+    const timer = setTimeout(() => {
+      if (!cancelled) setLoadState('revealing')
+    }, TIMEOUT)
+    preloadImages(PRELOAD_SRCS).then(() => {
+      clearTimeout(timer)
+      if (!cancelled) setLoadState('revealing')
+    })
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [])
 
   useEffect(() => {
@@ -33,6 +113,63 @@ export default function App() {
     })
     obs.observe(el)
     return () => obs.disconnect()
+  }, [])
+
+  // ── Rain ambient — starts on first user gesture, same pattern as fridge ─────
+  useEffect(() => {
+    const audio = new Audio(rainAmbient)
+    audio.loop   = true
+    audio.volume = 0
+    rainRef.current = audio
+
+    let started = false
+
+    const fadeIn = (targetVol) => {
+      let v = 0
+      const step = () => {
+        v = Math.min(v + 0.008, targetVol)
+        audio.volume = v
+        if (v < targetVol) setTimeout(step, 40)
+      }
+      step()
+    }
+
+    const removeListeners = () => {
+      document.removeEventListener('pointerdown', onGesture) // eslint-disable-line no-use-before-define
+      document.removeEventListener('touchstart',  onGesture) // eslint-disable-line no-use-before-define
+      document.removeEventListener('keydown',     onGesture) // eslint-disable-line no-use-before-define
+    }
+
+    const onGesture = () => {
+      if (started) return
+      started = true
+      removeListeners()
+      audio.play().then(() => fadeIn(VOL_RAIN_ROOM)).catch(() => { started = false })
+    }
+
+    document.addEventListener('pointerdown', onGesture)
+    document.addEventListener('touchstart',  onGesture)
+    document.addEventListener('keydown',     onGesture)
+
+    // Try immediate autoplay (works for return visitors with high MEI)
+    audio.play().then(() => { started = true; removeListeners(); fadeIn(VOL_RAIN_ROOM) }).catch(() => {})
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        audio.pause()
+      } else if (started) {
+        audio.play().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      removeListeners()
+      document.removeEventListener('visibilitychange', onVisibility)
+      audio.pause()
+      audio.src = ''
+      rainRef.current = null
+    }
   }, [])
 
   // ── View state ───────────────────────────────────────────────────────────────
@@ -56,6 +193,23 @@ export default function App() {
   const [projects,  setProjects]  = useState(() => import.meta.env.DEV ? [] : projectsData)
   const [settings,  setSettings]  = useState(settingsData)
   const [content,   setContent]   = useState(contentData)
+
+  // ── Fade rain volume when view changes ────────────────────────────────────
+  useEffect(() => {
+    const audio = rainRef.current
+    if (!audio) return
+    const target =
+      view === 'vent'    ? VOL_RAIN_VENT    :
+      view === 'desktop' ? VOL_RAIN_DESKTOP :
+      VOL_RAIN_ROOM
+    const step = () => {
+      const diff = target - audio.volume
+      if (Math.abs(diff) < 0.004) { audio.volume = target; return }
+      audio.volume = Math.max(0, Math.min(1, audio.volume + diff * 0.10))
+      setTimeout(step, 30)
+    }
+    step()
+  }, [view])
 
   // In dev: hydrate from disk via API to bypass Vite module-cache staleness
   useEffect(() => {
@@ -241,6 +395,17 @@ export default function App() {
     if (c) setContent(c)
   }, [])
 
+  // ── Mobile layout ────────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <MobileApp
+        projects={projects}
+        settings={settings}
+        content={content}
+      />
+    )
+  }
+
   return (
     <div ref={containerRef} style={{ position: 'fixed', inset: 0 }}>
       {/* Room — stays visible as backdrop when About / Contact / Vent panels open */}
@@ -321,6 +486,12 @@ export default function App() {
           onChange={handleAdminChange}
         />
       )}
+
+      {/* Initial load — black screen with flicker reveal */}
+      <LoadingOverlay
+        state={loadState}
+        onAnimationEnd={loadState === 'revealing' ? () => { sessionStorage.setItem('intro-played', '1'); setLoadState('done') } : undefined}
+      />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import radioStaticSrc from '../assets/audio/sfx/RadioStatic.mp3'
+import { VOL_STATIC } from '../config'
 
 // TV static transition overlay.
 // Phase 1 (0–400ms):  static builds in from black
@@ -8,11 +9,6 @@ import radioStaticSrc from '../assets/audio/sfx/RadioStatic.mp3'
 // onComplete fires at ~1300ms
 
 const DURATION = 1300
-
-// ── Audio ─────────────────────────────────────────────────────────────────────
-// Adjust volume here (0 = silent, 1 = full).
-// Swap the audio file by changing the import at the top of this file.
-const TRANSITION_VOLUME = 0.25
 
 export default function StaticTransition({ active, onComplete }) {
   const canvasRef  = useRef(null)
@@ -27,7 +23,7 @@ export default function StaticTransition({ active, onComplete }) {
   const getAudio = useCallback(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio(radioStaticSrc)
-      audioRef.current.volume = TRANSITION_VOLUME
+      audioRef.current.volume = VOL_STATIC
     }
     return audioRef.current
   }, [])
@@ -122,14 +118,14 @@ export default function StaticTransition({ active, onComplete }) {
 
     const audio = getAudio()
     audio.currentTime = 0
-    audio.volume = TRANSITION_VOLUME
+    audio.volume = VOL_STATIC
     audio.play().catch(() => {}) // silently ignore autoplay-policy rejections
 
     // Fade out over the last ~350ms of the transition so it doesn't cut abruptly
     const FADE_START = DURATION * 0.73          // ~950ms in
     const FADE_STEP_MS = 28
     const fadeSteps = Math.ceil((DURATION - FADE_START) / FADE_STEP_MS)
-    const volStep   = TRANSITION_VOLUME / fadeSteps
+    const volStep   = VOL_STATIC / fadeSteps
 
     const t = setTimeout(() => {
       const iv = setInterval(() => {
@@ -153,7 +149,7 @@ export default function StaticTransition({ active, onComplete }) {
       fadeTimers.current = []
       if (audioRef.current) {
         audioRef.current.pause()
-        audioRef.current.volume = TRANSITION_VOLUME  // reset for next use
+        audioRef.current.volume = VOL_STATIC  // reset for next use
       }
     }
   }, [active, getAudio])
